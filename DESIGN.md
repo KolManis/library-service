@@ -1,0 +1,322 @@
+# Library Service — дизайн
+
+Сервис библиотеки на Go в гексагональной архитектуре. Учебный проект с двумя целями:
+Go-код и собственная тестовая инфраструктура (testcontainers, фикстуры, CI).
+
+Документ живой: решения дописываются по мере принятия. Формат решений — «что решили,
+почему, что отвергли».
+
+---
+
+## 1. Домен
+
+Библиотека. Ограниченное число экземпляров книги, бронь на 3 дня, выдача на 14 дней,
+воркеры снимают просрочку, штрафы за невозврат.
+
+### Сущности
+
+| Сущность | Поля | Что это |
+|---|---|---|
+| Book | id, title, author, isbn | Книга как издание |
+| Copy | id, book_id, decommissioned | Физический экземпляр — ограниченный ресурс |
+| Reader | id, full_name, email, status | Читатель |
+| Loan | id, copy_id, reader_id, status, reserved_at, issued_at, due_at, returned_at | Выдача: от брони до возврата |
+| Fine | id, loan_id, amount, status (pending/paid) | Штраф за просрочку |
+
+### Машина статусов Loan
+
+```
+reserved ──issue──> issued ──return──> returned   (терминальный)
+    │                  │
+  expire           markOverdue
+    │                  │
+    v                  v
+ expired           overdue ──return──> returned
+(терминальный)
+```
+
+Правила:
+
+- `reserved → issued | expired`
+- `issued → returned | overdue`
+- `overdue → returned` — просроченную книгу можно вернуть
+- `returned`, `expired` — терминальные, из них переходов нет
+
+Константы домена: бронь живёт **3 дня** (`ReservationTTL`), выдача — **14 дней**
+(`LoanPeriodDays`). При возврате из `overdue` создаётся `Fine`.
+
+---
+
+## 2. Ключевые решения
+
+### 2.1 Кто владеет фактом «экземпляр занят» — Loan, не Copy
+
+**Решение.** У `Copy` нет статусов `available/reserved/issued` — только флаг
+`decommissioned`. «Экземпляр свободен» — вычисляемый факт: нет активной Loan
+(`reserved` или `issued`) на этот `copy_id`.
+
+**Почему.** `reserved/issued` — состояние процесса выдачи, а не свойство физического
+экземпляра. Хранение его в Copy — проекция состояния Loan на чужую сущность: два
+UPDATE в двух таблицах на каждый переход, и любой сбой между ними даёт рассинхрон
+(`loan = returned`, `copy = issued`) — экземпляр навсегда «занят». `decommissioned` —
+свойство самого экземпляра (физически списали), поэтому остаётся.
+
+Общий принцип: производные факты не храним как первичные данные. Если когда-нибудь
+понадобится материализация ради производительности — это осознанный кэш со стратегией
+пересчёта, а не «ещё одна колонка-правда».
+
+**Отвергнуто.** Статус у Copy (вариант из первоначального брифа): быстрее запрос
+свободных, но межтабличный инвариант нельзя выразить constraint'ом, и появляется
+рассинхрон по конструкции.
+
+### 2.2 Инвариант единственной активной выдачи — частичный уникальный индекс
+
+**Решение.** Инвариант «не больше одной активной выдачи на экземпляр» обеспечивает
+Postgres:
+
+```sql
+CREATE UNIQUE INDEX uniq_active_loan_per_copy
+    ON loans (copy_id)
+    WHERE status IN ('reserved', 'issued');
+```
+
+**Почему.** Это перевод инварианта из «разработчик не забыл FOR UPDATE» в «база
+физически не даст». При гонке вторая транзакция получает unique violation независимо
+от качества кода.
+
+**Важно: индекс не отменяет код, а меняет его роль.** `SELECT свободного` + `INSERT`
+остаётся TOCTOU-гонкой: обе транзакции видят экземпляр свободным, обе вставляют, одна
+ловит ошибку. Приложение обязано обработать SQLSTATE `23505`: взять следующий
+свободный экземпляр или вернуть 409. Код теперь про обработку отказа, а не про
+поддержание инварианта.
+
+**План упражнения (этап 3).** Индекс сознательно НЕ добавляется до этапа 3. Сначала
+тест на гонку (N горутин на 1 экземпляр) воспроизводит овербукинг — красный. Потом
+миграция с индексом + обработка 23505 — зелёный. Откат миграции — снова красный
+(проверка честности теста).
+
+### 2.3 Домен чистый, время — параметром
+
+- Поля агрегатов приватные; изменение состояния — только через методы, методы
+  сверяются с таблицей переходов. Невалидный объект не может существовать:
+  единственная дверь — конструктор.
+- Никаких gorm/json-тегов на доменных структурах. Персистентная модель — отдельная
+  структура в `adapters/out/repositories` с маппингом. Это цена чистоты домена.
+- Время всегда приходит параметром (`Issue(now time.Time)`), внутри домена нет
+  `time.Now()`. Следствие: «время прошло» в тестах моделируется данными
+  (`reserved_at = now - 4 дня`), никаких `Sleep`.
+- Домен защищает инварианты сам: `Expire` проверяет, что бронь старше TTL,
+  `MarkOverdue` — что срок прошёл. Правило не держится на вежливости воркера.
+- Ошибки — sentinel-переменные (`ErrInvalidTransition`, `ErrNotYetDue`), проверка
+  через `errors.Is`. Внешний код различает «нарушено бизнес-правило» (→ 409) и
+  «инфраструктура упала» (→ 500) без сравнения строк.
+
+### 2.4 События — через outbox
+
+Доменные события (`LoanChanged`, `FineCreated`) агрегат копит в себе, наружу их
+публикует не домен. Запись события в outbox-таблицу происходит в одной транзакции с
+изменением агрегата; отдельный воркер (`cmd/outbox`) публикует их в Kafka. Гарантия:
+не бывает «статус поменяли, событие потеряли».
+
+---
+
+## 3. Архитектура
+
+Гексагон. Единственное настоящее правило — **зависимости (импорты) направлены только
+внутрь**: `adapters → application → domain`. Домен не импортирует ничего, кроме
+stdlib и uuid. Проверяется компилятором и ревью, папки — лишь отражение правила.
+
+```
+cmd/
+  api/                      — HTTP-сервер
+  book-consumer/            — Kafka-консьюмер
+  expire-worker/            — воркер снятия броней
+  fines-worker/             — воркер штрафов
+  outbox/                   — публикация событий из outbox
+internal/
+  core/
+    domain/
+      aggregates/
+        loan/               — агрегат: сущность + машина статусов + события
+        book/  copy/  reader/  fine/
+        shared-kernel/      — общие value objects
+      services/             — доменные сервисы
+    ports/                  — ИНТЕРФЕЙСЫ: ILoanRepository, ILoanChangedProducer…
+    application/
+      commands/             — папка на команду: command.go (DTO+валидация)
+                              + command_handler.go (оркестрация)
+      queries/              — get-reader-loans/
+      domain-event-handlers/
+  adapters/
+    in/
+      http/                 — echo-хендлеры
+      consumers/            — Kafka-консьюмеры
+      workers/              — воркеры по таймеру
+    out/
+      repositories/         — реализация портов на gorm+postgres
+      producers/            — Kafka-продюсеры (protobuf)
+      metrics/
+api/
+  events/*.proto            — контракты событий
+migrations/                 — goose-миграции
+test/
+  integration/              — testcontainers
+    fixtures/               — YAML-фикстуры
+```
+
+### Роли слоёв
+
+- **domain** — правила, верные независимо от технологий (переходы, сроки, штрафы).
+  Тестируется голым `go test` без Docker.
+- **ports** — интерфейсы, объявленные внутри ядра, реализованные снаружи (инверсия
+  зависимостей). В тестах вместо Postgres подставляется фейк.
+- **application/commands** — оркестрация без бизнес-правил: достань → вызови домен →
+  сохрани → опубликуй. Один и тот же хендлер команды дёргают HTTP, консьюмер, воркер
+  и тест — напрямую.
+- **adapters/in** — переводчики: HTTP/protobuf/тик таймера → команда → результат →
+  HTTP-код/ack. Command bus не используется — адаптер держит конкретный хендлер.
+- **adapters/out** — реализации портов: SQL, маппинг, обработка 23505, sarama.
+
+### Путь запроса `POST /loans/{id}/issue`
+
+1. echo-хендлер парсит id → `issueloan.Command`;
+2. хендлер команды берёт агрегат у `ILoanRepository`;
+3. за интерфейсом — Postgres-репозиторий: SELECT → сборка `loan.Loan`;
+4. команда вызывает `l.Issue(now)` — домен проверяет переход, ставит `due_at`,
+   поднимает `LoanChanged`;
+5. `Save`: UPDATE + запись события в outbox одной транзакцией;
+6. хендлер переводит `nil → 200`, `ErrInvalidTransition → 409`.
+
+---
+
+## 4. API
+
+| Метод | Путь | Что делает |
+|---|---|---|
+| POST | /books/{id}/reserve | Забронировать свободный экземпляр (TTL 3 дня). Гонка за последний экземпляр — ровно один победитель |
+| POST | /loans/{id}/issue | Выдать на руки, `due_at = now + 14 дней` |
+| POST | /loans/{id}/return | Вернуть; из overdue — создаётся Fine |
+| GET | /readers/{id}/loans | Выдачи читателя |
+
+Фоновые процессы:
+
+- воркер `expire-reservations`: `reserved` старше 3 дней → `expired`;
+- воркер `overdue-fines`: `issued` с `due_at` в прошлом → `overdue` + `Fine`;
+- консьюмер `book.decommissioned`: все экземпляры книги → `decommissioned`, активные
+  брони отменяются;
+- продюсер: `loan.changed` на каждую смену статуса, `fine.created`.
+
+---
+
+## 5. Схема БД (черновик — уточняется при написании миграций)
+
+```sql
+CREATE TABLE books (
+    id      uuid PRIMARY KEY,
+    title   text NOT NULL,
+    author  text NOT NULL,
+    isbn    text NOT NULL
+);
+
+CREATE TABLE copies (
+    id             uuid PRIMARY KEY,
+    book_id        uuid NOT NULL REFERENCES books (id),
+    decommissioned boolean NOT NULL DEFAULT false
+);
+
+CREATE TABLE readers (
+    id        uuid PRIMARY KEY,
+    full_name text NOT NULL,
+    email     text NOT NULL,
+    status    text NOT NULL
+);
+
+CREATE TABLE loans (
+    id          uuid PRIMARY KEY,
+    copy_id     uuid NOT NULL REFERENCES copies (id),
+    reader_id   uuid NOT NULL REFERENCES readers (id),
+    status      text NOT NULL,
+    reserved_at timestamptz NOT NULL,
+    issued_at   timestamptz,
+    due_at      timestamptz,
+    returned_at timestamptz
+);
+
+-- Этап 3, отдельной миграцией (см. решение 2.2):
+-- CREATE UNIQUE INDEX uniq_active_loan_per_copy
+--     ON loans (copy_id) WHERE status IN ('reserved', 'issued');
+
+CREATE TABLE fines (
+    id      uuid PRIMARY KEY,
+    loan_id uuid NOT NULL REFERENCES loans (id),
+    amount  numeric(10,2) NOT NULL,
+    status  text NOT NULL
+);
+
+-- outbox — DDL уточним на этапе 4
+```
+
+Поиск свободного экземпляра:
+
+```sql
+SELECT c.* FROM copies c
+WHERE c.book_id = $1
+  AND NOT c.decommissioned
+  AND NOT EXISTS (
+      SELECT 1 FROM loans l
+      WHERE l.copy_id = c.id AND l.status IN ('reserved', 'issued')
+  )
+LIMIT 1;
+```
+
+Индекс `loans(copy_id, status)` появится вместе с частичным уникальным — `NOT EXISTS`
+по нему ходит нормально, преждевременно не оптимизируем.
+
+---
+
+## 6. Тесты
+
+Пирамида ложится на слои гексагона:
+
+1. **Unit — домен.** Табличные тесты переходов: из каждого статуса каждое действие,
+   ожидание — успех или конкретная sentinel-ошибка через `errors.Is`. Проверка
+   честности: сломай таблицу переходов — тест обязан покраснеть.
+2. **Integration — адаптеры (testcontainers).** Реальные Postgres+Kafka из кода
+   теста, goose-миграции на поднятой БД. Репозитории (реальный SQL), команды,
+   консьюмер (событие → изменение в БД), продюсер (действие → событие в топике).
+   YAML-фикстуры. Изоляция: truncate между тестами, свои consumer groups.
+3. **Гонки.** N горутин на 1 свободный экземпляр: овербукинг воспроизводится до
+   индекса, после фикса — ровно одна выдача, остальные получают внятный отказ, не 500.
+4. **Воркеры.** Хендлер команды вызывается напрямую (детерминированно), «время
+   прошло» — фикстурой, не Sleep.
+5. **E2E.** HTTP → БД → событие в Kafka → консьюмер → смена статуса → итоговое
+   событие.
+
+## 7. CI (GitHub Actions)
+
+На каждый push/PR: `golangci-lint` → unit → integration (`-tags=integration`,
+testcontainers поднимает Docker сам) → coverage. Работа через ветки и PR, в main
+напрямую не коммитим.
+
+## 8. Этапы
+
+1. **[в работе]** Скелет гексагона, домен Loan + unit-тесты, Postgres+goose,
+   репозиторий + первый integration-тест на testcontainers.
+2. HTTP reserve/issue/return, команды, фикстуры, изоляция тестов, CI.
+3. Гонки: воспроизвести овербукинг → частичный уникальный индекс + обработка 23505 →
+   закрыть тестом (красный → зелёный → откат миграции → снова красный).
+4. Kafka: proto-контракты, продюсер loan.changed, консьюмер book.decommissioned,
+   outbox.
+5. Воркеры (expire + fines), e2e, допилить CI.
+
+## 9. Критерии «готово»
+
+- тесты не требуют внешнего окружения — testcontainers поднимает всё сам;
+- `go test -tags=integration ./...` зелёный на чистой машине и в CI;
+- есть тест, падавший до фикса гонки (откат фикса → красный);
+- CI красный при сломанном тесте/линте.
+
+## 10. Стек
+
+Go 1.25 · gorm + Postgres · goose · sarama · protobuf · echo/v4 · testify ·
+testcontainers-go · golangci-lint · google/uuid
