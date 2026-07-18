@@ -89,9 +89,31 @@ func (l *Loan) MarkOverdue(now time.Time) error {
 	return nil
 }
 
-func (l *Loan) ID() uuid.UUID         { return l.id }
-func (l *Loan) Status() Status        { return l.status }
-func (l *Loan) CopyID() uuid.UUID     { return l.copyID }
-func (l *Loan) ReaderID() uuid.UUID   { return l.readerID }
-func (l *Loan) ReservedAt() time.Time { return l.reservedAt }
-func (l *Loan) DueAt() *time.Time     { return l.dueAt }
+// Restore восстанавливает Loan из хранилища. ТОЛЬКО для адаптеров
+// персистентности: валидация не выполняется — данные уже прошли её
+// при создании. Для новых выдач используйте Reserve.
+func Restore(
+	id, copyID, readerID uuid.UUID,
+	status Status,
+	reservedAt time.Time,
+	issuedAt, dueAt, returnedAt *time.Time,
+) *Loan {
+	return &Loan{
+		id:         id,
+		copyID:     copyID,
+		readerID:   readerID,
+		status:     status,
+		reservedAt: reservedAt,
+		issuedAt:   issuedAt,
+		dueAt:      dueAt,
+		returnedAt: returnedAt,
+	}
+}
+func (l *Loan) ID() uuid.UUID          { return l.id }
+func (l *Loan) Status() Status         { return l.status }
+func (l *Loan) CopyID() uuid.UUID      { return l.copyID }
+func (l *Loan) ReaderID() uuid.UUID    { return l.readerID }
+func (l *Loan) ReservedAt() time.Time  { return l.reservedAt }
+func (l *Loan) DueAt() *time.Time      { return l.dueAt }
+func (l *Loan) IssuedAt() *time.Time   { return l.issuedAt }
+func (l *Loan) ReturnedAt() *time.Time { return l.returnedAt }
