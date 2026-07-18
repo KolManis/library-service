@@ -5,7 +5,7 @@ package integration
 import (
 	"context"
 
-	"github.com/google/uuid"
+	"github.com/go-testfixtures/testfixtures/v3"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/suite"
 	"github.com/testcontainers/testcontainers-go"
@@ -20,14 +20,15 @@ type IntegrationSuite struct {
 	suite.Suite
 	db        *gorm.DB
 	container *tcpostgres.PostgresContainer
+	fixtures  *testfixtures.Loader
 }
 
 // SetupSuite — один раз перед ВСЕМИ тестами сьюта:
-// контейнер + миграции. Это ваш бывший setupDB почти дословно.
+// контейнер + миграции.
 func (s *IntegrationSuite) SetupSuite() {
 	ctx := context.Background()
 	container, err := tcpostgres.Run(ctx, "postgres:16-alpine",
-		tcpostgres.WithDatabase("library"),
+		tcpostgres.WithDatabase("library_test"),
 		tcpostgres.WithUsername("test"),
 		tcpostgres.WithPassword("test"),
 		tcpostgres.BasicWaitStrategies(),
@@ -45,6 +46,13 @@ func (s *IntegrationSuite) SetupSuite() {
 	s.Require().NoError(err)
 	s.Require().NoError(goose.SetDialect("postgres"))
 	s.Require().NoError(goose.Up(sqlDB, "../../migrations"))
+
+	s.fixtures, err = testfixtures.New(
+		testfixtures.Database(sqlDB),
+		testfixtures.Dialect("postgres"),
+		testfixtures.Directory("fixtures"),
+	)
+	s.Require().NoError(err)
 }
 
 // TearDownSuite — один раз после всех тестов: убить контейнер.
@@ -53,26 +61,7 @@ func (s *IntegrationSuite) TearDownSuite() {
 }
 
 // SetupTest — перед КАЖДЫМ тестом: чистая БД.
-// Дешёвая изоляция вместо нового контейнера.
 func (s *IntegrationSuite) SetupTest() {
-	s.Require().NoError(s.db.Exec(
-		`TRUNCATE TABLE fines, loans, copies, readers, books RESTART IDENTITY CASCADE`,
-	).Error)
-}
-
-// insertLoanFixtures создаёт книгу, экземпляр и читателя — родительские
-// строки для loans (внешние ключи не дадут вставить выдачу без них).
-func (s *IntegrationSuite) insertLoanFixtures(copyID, readerID uuid.UUID) {
-	bookID := uuid.New()
-	s.Require().NoError(s.db.Exec(
-		`INSERT INTO books (id, title, author, isbn)
-		 VALUES (?, 'Тестовая книга', 'Автор', '978-5-00000-000-0')`,
-		bookID).Error)
-	s.Require().NoError(s.db.Exec(
-		`INSERT INTO copies (id, book_id) VALUES (?, ?)`,
-		copyID, bookID).Error)
-	s.Require().NoError(s.db.Exec(
-		`INSERT INTO readers (id, full_name, email, status)
-		 VALUES (?, 'Тестовый Читатель', 'reader@example.com', 'active')`,
-		readerID).Error)
+	s.Require().NoError(s.db.Exec(`TRUNCATE TABLE fines, loans, copies, readers, books RESTART IDENTITY CASCADE`).Error)
+	s.Require().NoError(s.fixtures.Load())
 }
