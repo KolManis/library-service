@@ -15,6 +15,11 @@ import (
 	"github.com/KolManis/library-service/internal/core/ports"
 )
 
+var (
+	fixtureCopyID   = uuid.MustParse("22222222-2222-2222-2222-222222222221")
+	fixtureReaderID = uuid.MustParse("33333333-3333-3333-3333-333333333331")
+)
+
 type LoanRepositorySuite struct {
 	IntegrationSuite
 	repo *repositories.LoanRepository
@@ -31,10 +36,8 @@ func (s *LoanRepositorySuite) SetupTest() {
 func (s *LoanRepositorySuite) TestCreateAndGet() {
 	ctx := context.Background()
 	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
-	copyID, readerID := uuid.New(), uuid.New()
-	s.insertLoanFixtures(copyID, readerID)
 
-	l, err := loan.Reserve(copyID, readerID, now)
+	l, err := loan.Reserve(fixtureCopyID, fixtureReaderID, now)
 	s.Require().NoError(err)
 	s.Require().NoError(s.repo.Create(ctx, l))
 
@@ -42,11 +45,10 @@ func (s *LoanRepositorySuite) TestCreateAndGet() {
 	s.Require().NoError(err)
 
 	s.Require().Equal(l.ID(), got.ID())
-	s.Require().Equal(copyID, got.CopyID())
-	s.Require().Equal(readerID, got.ReaderID())
+	s.Require().Equal(fixtureCopyID, got.CopyID())
+	s.Require().Equal(fixtureReaderID, got.ReaderID())
 	s.Require().Equal(loan.StatusReserved, got.Status())
-	// время не сравниваем через Equal: Postgres хранит микросекунды,
-	// Go — наносекунды, плюс таймзона драйвера
+
 	s.Require().WithinDuration(now, got.ReservedAt(), time.Second)
 	s.Require().Nil(got.DueAt(), "у брони ещё нет срока возврата")
 }
@@ -55,10 +57,8 @@ func (s *LoanRepositorySuite) TestCreateAndGet() {
 func (s *LoanRepositorySuite) TestUpdate() {
 	ctx := context.Background()
 	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
-	copyID, readerID := uuid.New(), uuid.New()
-	s.insertLoanFixtures(copyID, readerID)
 
-	l, err := loan.Reserve(copyID, readerID, now)
+	l, err := loan.Reserve(fixtureCopyID, fixtureReaderID, now)
 	s.Require().NoError(err)
 	s.Require().NoError(s.repo.Create(ctx, l))
 
