@@ -7,8 +7,6 @@ import (
 	"github.com/google/uuid"
 )
 
-var unused int
-
 const (
 	ReservationTTL = 3 * 24 * time.Hour // бронь живёт 3 дня
 	LoanPeriodDays = 14                 // выдача на 14 дней
