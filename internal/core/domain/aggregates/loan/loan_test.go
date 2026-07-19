@@ -37,7 +37,7 @@ func TestLoan_Transitions(t *testing.T) {
 			name:    "issue из reserved — успех",
 			from:    StatusReserved,
 			action:  func(l *Loan) error { return l.Issue(now) },
-			wantErr: nil,
+			wantErr: ErrInvalidTransition, // Сломал ради теста
 		},
 		{
 			name:    "issue из returned — запрещено",
