@@ -1,0 +1,106 @@
+[
+  {
+    "id": "RESERVE-001",
+    "title": "Забронировать свободный экземпляр — POST /books/{id}/reserve",
+    "priority": "high",
+    "status": "done",
+    "acceptance": [
+      "Свободный экземпляр находится и бронируется на ReservationTTL (3 дня)",
+      "Гонка за последний экземпляр — ровно один победитель, второй получает 409 ErrNoFreeCopy",
+      "Невалидные bookID/readerID — 400"
+    ],
+    "verification": "go test ./internal/core/application/commands/reservecopy/...",
+    "notes": "Смёржено в main (PR #5)."
+  },
+  {
+    "id": "ISSUE-001",
+    "title": "Выдать книгу на руки — POST /loans/{id}/issue",
+    "priority": "high",
+    "status": "done",
+    "acceptance": [
+      "reserved -> issued, due_at = now + 14 дней",
+      "Недопустимый переход (уже issued/returned/expired) -> 409",
+      "loanID не найден -> 404"
+    ],
+    "verification": "go test ./internal/core/application/commands/issueloan/...",
+    "notes": "Смёржено в main (PR #6)."
+  },
+  {
+    "id": "RETURN-001",
+    "title": "Вернуть книгу, штраф за просрочку — POST /loans/{id}/return",
+    "priority": "high",
+    "status": "in_review",
+    "acceptance": [
+      "issued/overdue -> returned",
+      "Возврат из overdue создаёт Fine (amount = FineRatePerDay * дни просрочки, округление вверх)",
+      "Возврат вовремя (issued -> returned) штраф не создаёт",
+      "Loan.Update и Fine.Create — одной транзакцией (ITransactor)",
+      "Недопустимый переход -> 409, loanID не найден -> 404"
+    ],
+    "verification": "go test ./internal/core/application/commands/returnloan/... ./internal/core/domain/aggregates/fine/...",
+    "notes": "Код и тесты готовы, запушено в feature/return-loan (origin), PR в main не открыт/не смёржен."
+  },
+  {
+    "id": "QUERY-001",
+    "title": "Список выдач читателя — GET /readers/{id}/loans",
+    "priority": "medium",
+    "status": "in_progress",
+    "acceptance": [
+      "Возвращает все Loan читателя (включая завершённые) как read-модель LoanView, не доменный агрегат",
+      "Нет выдач у читателя -> пустой список, не ошибка",
+      "Несуществующий readerID -> тоже пустой список (агрегата Reader пока нет, 404 не проверяется)"
+    ],
+    "verification": "go test ./internal/core/application/queries/getreaderloans/...",
+    "notes": "Сделано: Query DTO (query.go), порт IReaderLoansReader + LoanView (ports/reader_loans_reader.go). Осталось: query_handler.go (сейчас пустой), FindByReaderID в LoanRepository, HTTP-хендлер, wiring в main.go, тесты."
+  },
+  {
+    "id": "RACE-001",
+    "title": "Гонки за экземпляр: тест на овербукинг -> частичный уникальный индекс -> обработка 23505",
+    "priority": "medium",
+    "status": "planned",
+    "acceptance": [
+      "Тест с N горутин на 1 свободный экземпляр воспроизводит овербукинг (красный) до индекса",
+      "Миграция с uniq_active_loan_per_copy + обработка SQLSTATE 23505 -> тест зелёный",
+      "Откат миграции -> тест снова красный (проверка честности)"
+    ],
+    "verification": "go test -tags=integration ./test/integration/...",
+    "notes": "Этап 3 из DESIGN.md. См. решение 2.2."
+  },
+  {
+    "id": "KAFKA-001",
+    "title": "Kafka: outbox, продюсер loan.changed/fine.created, консьюмер book.decommissioned",
+    "priority": "low",
+    "status": "planned",
+    "acceptance": [
+      "Событие пишется в outbox в одной транзакции с изменением агрегата",
+      "cmd/outbox публикует события из outbox в Kafka",
+      "Консьюмер book.decommissioned списывает все Copy книги и отменяет активные брони"
+    ],
+    "verification": "go test -tags=integration ./test/integration/...",
+    "notes": "Этап 4 из DESIGN.md. См. решение 2.4."
+  },
+  {
+    "id": "WORKER-001",
+    "title": "Воркеры expire-reservations и overdue-fines, e2e",
+    "priority": "low",
+    "status": "planned",
+    "acceptance": [
+      "expire-worker: reserved старше 3 дней -> expired",
+      "fines-worker: issued с прошедшим due_at -> overdue + Fine",
+      "e2e: HTTP -> БД -> событие в Kafka -> консьюмер -> смена статуса"
+    ],
+    "verification": "go test -tags=integration ./test/integration/...",
+    "notes": "Этап 5 из DESIGN.md."
+  },
+  {
+    "id": "INFRA-BACKLOG",
+    "title": "Инфраструктурный бэклог: наблюдаемость, живучесть процесса, API-слой, данные, деплой, CI/безопасность",
+    "priority": "low",
+    "status": "planned",
+    "acceptance": [
+      "См. полный список пунктов в DESIGN.md, раздел 11"
+    ],
+    "verification": "n/a — набор независимых мелких задач, не блокирует этапы 2-5",
+    "notes": "Этап 6 из DESIGN.md. Не дублируем список здесь — единственный источник истины DESIGN.md §11."
+  }
+]
