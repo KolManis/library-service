@@ -14,6 +14,7 @@ import (
 	"github.com/KolManis/library-service/internal/adapters/out/repositories"
 	"github.com/KolManis/library-service/internal/core/application/commands/issueloan"
 	"github.com/KolManis/library-service/internal/core/application/commands/reservecopy"
+	"github.com/KolManis/library-service/internal/core/application/commands/returnloan"
 	"github.com/KolManis/library-service/migrations"
 )
 
@@ -46,17 +47,22 @@ func main() {
 	// 3. Сборка зависимостей
 	copyRepo := repositories.NewCopyRepository(db)
 	loanRepo := repositories.NewLoanRepository(db)
+	fineRepo := repositories.NewFineRepository(db)
+	transactor := repositories.NewTransactor(db)
 
 	reserveHandler := reservecopy.NewHandler(copyRepo, loanRepo, time.Now)
 	issueHandler := issueloan.NewHandler(loanRepo, time.Now)
+	returnHandler := returnloan.NewHandler(loanRepo, fineRepo, transactor, time.Now)
 
 	httpReserveHandler := httphandlers.NewReserveHandler(reserveHandler)
 	httpIssueHandler := httphandlers.NewIssueHandler(issueHandler)
+	httpReturnHandler := httphandlers.NewReturnHandler(returnHandler)
 
 	// 4. Настройка Echo и маршрутов
 	e := echo.New()
 	e.POST("/books/:id/reserve", httpReserveHandler.Reserve)
 	e.POST("/loans/:id/issue", httpIssueHandler.Issue)
+	e.POST("/loans/:id/return", httpReturnHandler.Return)
 
 	// 5. Старт сервера
 	port := os.Getenv("PORT")

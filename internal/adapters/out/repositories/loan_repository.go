@@ -28,7 +28,7 @@ type loanModel struct {
 // TableName говорит gorm имя таблицы — иначе он выведет "loan_models".
 func (loanModel) TableName() string { return "loans" }
 
-func toModel(l *loan.Loan) loanModel {
+func toLoanModel(l *loan.Loan) loanModel {
 	return loanModel{
 		ID:         l.ID(),
 		CopyID:     l.CopyID(),
@@ -41,7 +41,7 @@ func toModel(l *loan.Loan) loanModel {
 	}
 }
 
-func toDomain(m loanModel) *loan.Loan {
+func toLoanDomain(m loanModel) *loan.Loan {
 	return loan.Restore(
 		m.ID, m.CopyID, m.ReaderID,
 		loan.Status(m.Status),
@@ -59,23 +59,23 @@ func NewLoanRepository(db *gorm.DB) *LoanRepository {
 }
 
 func (r *LoanRepository) Create(ctx context.Context, l *loan.Loan) error {
-	m := toModel(l)
-	return r.db.WithContext(ctx).Create(&m).Error
+	m := toLoanModel(l)
+	return dbFromContext(ctx, r.db).Create(&m).Error
 }
 
 func (r *LoanRepository) GetByID(ctx context.Context, id uuid.UUID) (*loan.Loan, error) {
 	var m loanModel
-	err := r.db.WithContext(ctx).First(&m, "id = ?", id).Error
+	err := dbFromContext(ctx, r.db).First(&m, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("%w: %s", ports.ErrLoanNotFound, id)
 		}
 		return nil, err
 	}
-	return toDomain(m), nil
+	return toLoanDomain(m), nil
 }
 
 func (r *LoanRepository) Update(ctx context.Context, l *loan.Loan) error {
-	m := toModel(l)
-	return r.db.WithContext(ctx).Save(&m).Error
+	m := toLoanModel(l)
+	return dbFromContext(ctx, r.db).Save(&m).Error
 }
