@@ -44,14 +44,14 @@
     "id": "QUERY-001",
     "title": "Список выдач читателя — GET /readers/{id}/loans",
     "priority": "medium",
-    "status": "in_progress",
+    "status": "done",
     "acceptance": [
       "Возвращает все Loan читателя (включая завершённые) как read-модель LoanView, не доменный агрегат",
       "Нет выдач у читателя -> пустой список, не ошибка",
       "Несуществующий readerID -> тоже пустой список (агрегата Reader пока нет, 404 не проверяется)"
     ],
     "verification": "go test ./internal/core/application/queries/getreaderloans/...",
-    "notes": "Сделано: Query DTO (query.go), порт IReaderLoansReader + LoanView (ports/reader_loans_reader.go). Осталось: query_handler.go (сейчас пустой), FindByReaderID в LoanRepository, HTTP-хендлер, wiring в main.go, тесты."
+    "notes": "Готово: query.go, query_handler.go, порт IReaderLoansReader + LoanView, FindByReaderID в LoanRepository, HTTP-хендлер (reader_loans_handler.go), wiring в main.go, unit-тесты (3 сценария). Не запушено в origin — локально на feature/get-reader-loans. Integration-тест на FindByReaderID не написан (unit-уровня достаточно для acceptance)."
   },
   {
     "id": "RACE-001",

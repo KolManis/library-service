@@ -50,19 +50,23 @@ func toLoanDomain(m loanModel) *loan.Loan {
 	)
 }
 
+// LoanRepository — gorm-реализация ports.ILoanRepository и ports.IReaderLoansReader.
 type LoanRepository struct {
 	db *gorm.DB
 }
 
+// NewLoanRepository создаёт LoanRepository поверх открытого соединения gorm.
 func NewLoanRepository(db *gorm.DB) *LoanRepository {
 	return &LoanRepository{db: db}
 }
 
+// Create сохраняет новую выдачу.
 func (r *LoanRepository) Create(ctx context.Context, l *loan.Loan) error {
 	m := toLoanModel(l)
 	return dbFromContext(ctx, r.db).Create(&m).Error
 }
 
+// GetByID возвращает выдачу по id. Не найдена — ports.ErrLoanNotFound.
 func (r *LoanRepository) GetByID(ctx context.Context, id uuid.UUID) (*loan.Loan, error) {
 	var m loanModel
 	err := dbFromContext(ctx, r.db).First(&m, "id = ?", id).Error
@@ -75,7 +79,34 @@ func (r *LoanRepository) GetByID(ctx context.Context, id uuid.UUID) (*loan.Loan,
 	return toLoanDomain(m), nil
 }
 
+// Update сохраняет изменённое состояние выдачи.
 func (r *LoanRepository) Update(ctx context.Context, l *loan.Loan) error {
 	m := toLoanModel(l)
 	return dbFromContext(ctx, r.db).Save(&m).Error
+}
+
+// FindByReaderID возвращает все выдачи читателя (включая завершённые). Нет
+// выдач — пустой срез, без ошибки.
+func (r *LoanRepository) FindByReaderID(ctx context.Context, readerID uuid.UUID) ([]ports.LoanView, error) {
+	var models []loanModel
+	if err := dbFromContext(ctx, r.db).
+		Where("reader_id = ?", readerID).
+		Order("reserved_at DESC").
+		Find(&models).Error; err != nil {
+		return nil, err
+	}
+
+	views := make([]ports.LoanView, 0, len(models))
+	for _, m := range models {
+		views = append(views, ports.LoanView{
+			LoanID:     m.ID,
+			CopyID:     m.CopyID,
+			Status:     m.Status,
+			ReservedAt: m.ReservedAt,
+			IssuedAt:   m.IssuedAt,
+			DueAt:      m.DueAt,
+			ReturnedAt: m.ReturnedAt,
+		})
+	}
+	return views, nil
 }
