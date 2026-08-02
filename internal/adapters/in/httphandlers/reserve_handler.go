@@ -61,6 +61,11 @@ func (h *ReserveHandler) Reserve(c echo.Context) error {
 				"error": "нет свободных экземпляров",
 			})
 		}
+		if errors.Is(err, ports.ErrConcurrentReservation) {
+			return c.JSON(http.StatusConflict, map[string]string{
+				"error": "экземпляр только что заняли, попробуйте ещё раз",
+			})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "внутренняя ошибка сервера",
 		})

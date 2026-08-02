@@ -77,6 +77,42 @@ HTTP-хендлеры, все репозитории — везде добавл
 Remaining:
 - QUERY-001 не запушен в origin (только локально на `feature/get-reader-loans`).
 - RETURN-001 всё ещё не смёржен в main (см. запись от 2026-07-31).
+
+## 2026-08-03
+
+Task: RACE-001 (этап 3), branch protection на `main`, план SDET-практики (отдельный PR)
+
+Changed:
+- `RETURN-001`/`QUERY-001`/план SDET — смёржены в `main` (PR #7, #8, #9). PR #8
+  смёржен squash'ем (наши 3 отдельных коммита схлопнулись в один) — единственный
+  раз так, до этого и после — обычный merge commit.
+- Настроен GitHub ruleset на `main`: require PR before merging, required status
+  checks (`lint`/`unit`/`integration`), block force pushes, restrict deletions.
+  Linear history сознательно не включали — конфликтует с обычным merge commit,
+  которым мержим PR.
+- `RACE-001`: `test/integration/reserve_race_test.go` (100 горутин на 1 свободный
+  экземпляр книги), `migrations/00002_uniq_active_loan_per_copy.sql` (частичный
+  уникальный индекс), `ports.ErrConcurrentReservation` + обработка SQLSTATE
+  `23505` в `LoanRepository.Create` (`errors.As` на `*pgconn.PgError`), маппинг
+  на 409 в `reserve_handler.go`. Убрано дублирование тестовых фикстур-переменных
+  (`raceBookID` и т.п. дублировали уже существующие `fixtureBookID` и т.п. в том
+  же пакете) и мёртвая переменная `raceCopyID1`.
+
+Verified:
+- Цикл красный → зелёный → откат миграции → красный → восстановление прогнан
+  вживую через реальный Docker/testcontainers (не только по коду): без индекса
+  тест реально ловит овербукинг (`actual: 2` вместо `1`), с индексом — зелёный.
+- Весь integration-сьют (`CopyRepositorySuite`, `LoanRepositorySuite`,
+  `MigrationsSuite`, `RaceSuite`) зелёный после фикса.
+- `go build`/`go vet`/unit-тесты/`gofmt` — чисто.
+
+Remaining:
+- Этап 3 из DESIGN.md закрыт полностью.
+- Дальше по roadmap: `KAFKA-001` (этап 4) и `WORKER-001` (этап 5) — оба
+  `priority: low`, не начаты.
+
+Next session: начать `KAFKA-001` — proto-контракты событий, outbox-таблица,
+продюсер `loan.changed`/`fine.created`, консьюмер `book.decommissioned`.
 - Style-правки затрагивают файлы вне scope QUERY-001 (`reserve_handler.go`,
   `reservecopy/command_handler.go`) — стоит коммитить отдельным коммитом/PR, не
   мешать со сменой фичи.

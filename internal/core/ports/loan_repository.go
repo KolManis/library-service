@@ -8,6 +8,9 @@ import (
 	"github.com/google/uuid"
 )
 
+// ErrConcurrentReservation — свободный экземпляр был, но его увели.
+var ErrConcurrentReservation = errors.New("экземпляр только что заняли")
+
 // ErrLoanNotFound — выдача с указанным id не найдена.
 var ErrLoanNotFound = errors.New("выдача не найдена")
 

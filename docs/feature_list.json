@@ -29,7 +29,7 @@
     "id": "RETURN-001",
     "title": "Вернуть книгу, штраф за просрочку — POST /loans/{id}/return",
     "priority": "high",
-    "status": "in_review",
+    "status": "done",
     "acceptance": [
       "issued/overdue -> returned",
       "Возврат из overdue создаёт Fine (amount = FineRatePerDay * дни просрочки, округление вверх)",
@@ -38,7 +38,7 @@
       "Недопустимый переход -> 409, loanID не найден -> 404"
     ],
     "verification": "go test ./internal/core/application/commands/returnloan/... ./internal/core/domain/aggregates/fine/...",
-    "notes": "Код и тесты готовы, запушено в feature/return-loan (origin), PR в main не открыт/не смёржен."
+    "notes": "Смёржено в main (PR #7)."
   },
   {
     "id": "QUERY-001",
@@ -57,14 +57,14 @@
     "id": "RACE-001",
     "title": "Гонки за экземпляр: тест на овербукинг -> частичный уникальный индекс -> обработка 23505",
     "priority": "medium",
-    "status": "planned",
+    "status": "done",
     "acceptance": [
       "Тест с N горутин на 1 свободный экземпляр воспроизводит овербукинг (красный) до индекса",
       "Миграция с uniq_active_loan_per_copy + обработка SQLSTATE 23505 -> тест зелёный",
       "Откат миграции -> тест снова красный (проверка честности)"
     ],
-    "verification": "go test -tags=integration ./test/integration/...",
-    "notes": "Этап 3 из DESIGN.md. См. решение 2.2."
+    "verification": "go test -tags=integration ./test/integration/... -run TestRaceSuite",
+    "notes": "Этап 3 из DESIGN.md закрыт. test/integration/reserve_race_test.go (100 горутин на 1 свободный экземпляр), migrations/00002_uniq_active_loan_per_copy.sql, ports.ErrConcurrentReservation + обработка SQLSTATE 23505 в LoanRepository.Create, маппинг на 409 в reserve_handler.go. Цикл красный->зелёный->откат->красный->восстановление проверен вживую (реальный Docker/testcontainers, не только по коду)."
   },
   {
     "id": "KAFKA-001",
