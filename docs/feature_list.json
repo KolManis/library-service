@@ -29,7 +29,7 @@
     "id": "RETURN-001",
     "title": "Вернуть книгу, штраф за просрочку — POST /loans/{id}/return",
     "priority": "high",
-    "status": "in_review",
+    "status": "done",
     "acceptance": [
       "issued/overdue -> returned",
       "Возврат из overdue создаёт Fine (amount = FineRatePerDay * дни просрочки, округление вверх)",
@@ -38,7 +38,7 @@
       "Недопустимый переход -> 409, loanID не найден -> 404"
     ],
     "verification": "go test ./internal/core/application/commands/returnloan/... ./internal/core/domain/aggregates/fine/...",
-    "notes": "Код и тесты готовы, запушено в feature/return-loan (origin), PR в main не открыт/не смёржен."
+    "notes": "Смёржено в main (PR #7)."
   },
   {
     "id": "QUERY-001",
