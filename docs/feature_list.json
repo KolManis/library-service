@@ -102,5 +102,42 @@
     ],
     "verification": "n/a — набор независимых мелких задач, не блокирует этапы 2-5",
     "notes": "Этап 6 из DESIGN.md. Не дублируем список здесь — единственный источник истины DESIGN.md §11."
+  },
+  {
+    "id": "SDET-LOAD-001",
+    "title": "k6: нагрузочные сценарии поверх HTTP API (baseline, spike на reserve, soak)",
+    "priority": "low",
+    "status": "planned",
+    "acceptance": [
+      "Baseline-сценарий снимает p95/p99 latency и error rate",
+      "Spike-сценарий на POST /books/{id}/reserve не даёт овербукинга под нагрузкой",
+      "Soak-сценарий не показывает деградации/утечек на продолжительной нагрузке"
+    ],
+    "verification": "k6 run <script>.js",
+    "notes": "Не про продукт — SDET-практика (DESIGN.md §12). Делать после RACE-001, иначе spike просто законно найдёт ещё не пофикшенный овербукинг."
+  },
+  {
+    "id": "SDET-UI-001",
+    "title": "Минимальный веб-фронт + Playwright-автоматизация поверх него",
+    "priority": "low",
+    "status": "planned",
+    "acceptance": [
+      "Простой фронт (не Go): список книг, бронирование, список своих броней",
+      "Playwright-тесты на ключевые пользовательские сценарии"
+    ],
+    "verification": "npx playwright test",
+    "notes": "Не про продукт — SDET-практика (DESIGN.md §12). Осознанное расширение scope: у library-service нет UI, фронт нужен только как площадка для автоматизации."
+  },
+  {
+    "id": "SDET-BLACKBOX-001",
+    "title": "Чёрный ящик API-тесты другим стеком (pytest+requests и/или Postman/Newman)",
+    "priority": "low",
+    "status": "planned",
+    "acceptance": [
+      "Тесты дёргают поднятый сервис по HTTP снаружи, не импортируя Go-код",
+      "Newman-коллекция (если сделана) прогоняется отдельным шагом в CI"
+    ],
+    "verification": "pytest / newman run <collection>.json",
+    "notes": "Не про продукт — SDET-практика (DESIGN.md §12). Нужен способ поднять сервис одной командой — зависит от Dockerfile/docker-compose из INFRA-BACKLOG."
   }
 ]
