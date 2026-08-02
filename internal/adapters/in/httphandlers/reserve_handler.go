@@ -10,21 +10,23 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// ReserveHandler — переводчик HTTP → команда → HTTP.
+// ReserveHandler — переводчик HTTP → команда reservecopy → HTTP.
 type ReserveHandler struct {
 	reserve *reservecopy.Handler
 }
 
+// NewReserveHandler создаёт ReserveHandler поверх готового command-хендлера.
 func NewReserveHandler(reserve *reservecopy.Handler) *ReserveHandler {
 	return &ReserveHandler{reserve: reserve}
 }
 
-// ReserveRequest — JSON-тело запроса.
+// ReserveRequest — тело запроса POST /books/:id/reserve.
 type ReserveRequest struct {
 	ReaderID uuid.UUID `json:"reader_id"`
 }
 
-// Reserve обрабатывает POST /books/:id/reserve.
+// Reserve обрабатывает POST /books/:id/reserve: бронирует свободный экземпляр
+// книги за читателем. 201 с loan_id при успехе, 409 — свободных экземпляров нет.
 func (h *ReserveHandler) Reserve(c echo.Context) error {
 	// 1. Распарсить bookID из URL
 	bookID, err := uuid.Parse(c.Param("id"))

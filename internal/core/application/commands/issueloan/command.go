@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// ErrEmptyID - ошибка валидации, если LoanID пустой
+// ErrEmptyID — в команду передан нулевой LoanID.
 var ErrEmptyID = errors.New("идентификатор не может быть пустым")
 
 // Command - данные, необходимые для выдачи книги читателю

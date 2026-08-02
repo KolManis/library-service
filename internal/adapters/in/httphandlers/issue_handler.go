@@ -4,30 +4,31 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
-
 	"github.com/KolManis/library-service/internal/core/application/commands/issueloan"
 	"github.com/KolManis/library-service/internal/core/domain/aggregates/loan"
 	"github.com/KolManis/library-service/internal/core/ports"
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
 )
 
-// IssueHandler — переводчик HTTP → команда → HTTP.
+// IssueHandler — переводчик HTTP → команда issueloan → HTTP.
 type IssueHandler struct {
 	issue *issueloan.Handler
 }
 
+// NewIssueHandler создаёт IssueHandler поверх готового command-хендлера.
 func NewIssueHandler(issue *issueloan.Handler) *IssueHandler {
 	return &IssueHandler{issue: issue}
 }
 
-// Issue обрабатывает POST /loans/:id/issue.
+// Issue обрабатывает POST /loans/:id/issue: выдаёт книгу читателю на руки.
+// 200 при успехе, 404 — выдача не найдена, 409 — недопустимый переход статуса.
 func (h *IssueHandler) Issue(c echo.Context) error {
 	loanID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "невалидный loanID"},
-		)
+			"error": "невалидный loanID",
+		})
 	}
 
 	cmd, err := issueloan.NewCommand(loanID)

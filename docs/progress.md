@@ -34,3 +34,52 @@ Next session: продолжить QUERY-001 с `query_handler.go` (тонкий
 хендлер к `IReaderLoansReader`), затем `FindByReaderID` в `loan_repository.go`.
 После завершения QUERY-001 этап 2 из DESIGN.md закрыт полностью — дальше RACE-001
 (этап 3).
+
+## 2026-08-02
+
+Task: QUERY-001 (завершить), единый code style репозитория
+
+Changed:
+- `getreaderloans` — дописаны `query_handler.go`, `FindByReaderID` в
+  `LoanRepository`, `reader_loans_handler.go`, wiring в `main.go`, 3 unit-теста
+  (успех/пусто/ошибка репозитория). QUERY-001 закрыт полностью — этап 2 из
+  DESIGN.md закрыт.
+- `docs/style.md` — новый файл: правила по комментариям (по умолчанию не пишем,
+  5 явных исключений), импортам (2 блока, без ручного `-local`-разделения),
+  переносу параметров (3+ — по одному на строку), неймингу (`fake<Порт>`, поле
+  хендлера не `handler`). Правило зафиксировано после ревью реальных расхождений
+  между `reservecopy`/`issueloan`/`reserve_handler.go` (старые, с комментариями
+  через строчку) и `returnloan`/`return_handler.go` (новые, лаконичные).
+- Применено по всему репозиторию: убраны комментарии-дублёры в HTTP-хендлерах и
+  command-хендлерах (`reserve_handler.go`, `issue_handler.go`, `reservecopy`,
+  `issueloan`), выровнена нумерация шагов (`Шаг N:` → `N.`), унифицированы
+  импорты в `issue_handler.go`/`return_handler.go`, добавлены комментарии на
+  `fineModel`/`TableName()` и `fine.NewFine` по образцу `loan`-аггрегата,
+  `reader_loans_handler.go` упрощён (не форматируем даты в строки вручную —
+  `encoding/json` сам сериализует `time.Time`), тестовый fake переименован
+  `fakeReader` → `fakeReaderLoansReader`.
+
+Verified:
+- `go build ./...`, `go vet ./...`, `go test ./...` — чисто, все зелёные.
+- `gofmt -l` по всем изменённым файлам (с поправкой на CRLF от Windows-редактора)
+  — чисто.
+
+Правило комментариев из `docs/style.md` пересмотрено в этой же сессии: вместо
+«без комментариев по умолчанию» — **godoc на каждом экспортируемом**
+идентификаторе (функция/метод/тип/константа, комментарий начинается с имени —
+стандарт `go doc`/IDE-подсказок/`golint`). Приватное — как было, без комментария,
+если не несёт что-то не считываемое из кода. Применено по всему репозиторию:
+`loan.go`, `status.go`, `fine.go`, все ports, все command/query-хендлеры, все
+HTTP-хендлеры, все репозитории — везде добавлены недостающие godoc-комментарии.
+`go doc` проверен вручную (`go doc ./internal/.../returnloan Handler` и т.п.) —
+рендерится корректно.
+
+Remaining:
+- QUERY-001 не запушен в origin (только локально на `feature/get-reader-loans`).
+- RETURN-001 всё ещё не смёржен в main (см. запись от 2026-07-31).
+- Style-правки затрагивают файлы вне scope QUERY-001 (`reserve_handler.go`,
+  `reservecopy/command_handler.go`) — стоит коммитить отдельным коммитом/PR, не
+  мешать со сменой фичи.
+
+Next session: запушить `feature/get-reader-loans`, открыть PR. Начать RACE-001
+(этап 3) — тест на овербукинг до добавления частичного уникального индекса.
