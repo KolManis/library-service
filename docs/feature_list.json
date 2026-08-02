@@ -68,16 +68,42 @@
   },
   {
     "id": "KAFKA-001",
-    "title": "Kafka: outbox, продюсер loan.changed/fine.created, консьюмер book.decommissioned",
+    "title": "Доменные события + outbox: событие сохраняется одной транзакцией с агрегатом",
     "priority": "low",
     "status": "planned",
     "acceptance": [
-      "Событие пишется в outbox в одной транзакции с изменением агрегата",
-      "cmd/outbox публикует события из outbox в Kafka",
-      "Консьюмер book.decommissioned списывает все Copy книги и отменяет активные брони"
+      "Loan.Issue/Return/Expire/MarkOverdue/Reserve и Fine.NewFine поднимают событие (LoanChanged/FineCreated), доступное через PullEvents()",
+      "Таблица outbox: событие пишется в одной транзакции с Update/Create агрегата (reservecopy/issueloan/returnloan используют ITransactor)",
+      "Если Update/Create падает — строки в outbox тоже нет (проверка атомарности)"
     ],
     "verification": "go test -tags=integration ./test/integration/...",
-    "notes": "Этап 4 из DESIGN.md. См. решение 2.4."
+    "notes": "Этап 4 из DESIGN.md, часть 1/3. Без Kafka и без protobuf — чистый DB-паттерн. См. решение 2.4."
+  },
+  {
+    "id": "KAFKA-002",
+    "title": "Kafka-продюсер: публикация событий из outbox (loan.changed, fine.created)",
+    "priority": "low",
+    "status": "planned",
+    "acceptance": [
+      "buf + protoc-gen-go генерируют Go-код из api/events/*.proto",
+      "cmd/outbox читает неопубликованные строки, публикует в Kafka, помечает published_at",
+      "Ключ сообщения — id агрегата (сохраняет порядок событий одного Loan/Fine в партиции)"
+    ],
+    "verification": "go test -tags=integration ./test/integration/...",
+    "notes": "Этап 4 из DESIGN.md, часть 2/3. Зависит от KAFKA-001."
+  },
+  {
+    "id": "KAFKA-003",
+    "title": "Консьюмер book.decommissioned: списание Copy + отмена активных броней",
+    "priority": "low",
+    "status": "planned",
+    "acceptance": [
+      "Новый терминальный статус Loan.Cancelled (только из reserved, не из issued)",
+      "Консьюмер списывает все Copy книги (decommissioned=true) и отменяет reserved-брони на них",
+      "Идемпотентность: повторная обработка того же события book.decommissioned не падает"
+    ],
+    "verification": "go test -tags=integration ./test/integration/...",
+    "notes": "Этап 4 из DESIGN.md, часть 3/3. Зависит от KAFKA-002. Новый статус — решение для DESIGN.md, не только код."
   },
   {
     "id": "WORKER-001",
