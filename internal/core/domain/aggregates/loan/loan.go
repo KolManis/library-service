@@ -12,6 +12,7 @@ const (
 	LoanPeriodDays = 14                 // выдача на 14 дней
 )
 
+// Loan — агрегат выдачи книги: от брони до возврата.
 type Loan struct {
 	id         uuid.UUID
 	copyID     uuid.UUID
@@ -23,7 +24,7 @@ type Loan struct {
 	returnedAt *time.Time
 }
 
-// Создать новую бронь (начать жизненный цикл)
+// Reserve создаёт новую бронь (начало жизненного цикла выдачи).
 func Reserve(copyID, readerID uuid.UUID, now time.Time) (*Loan, error) {
 	if copyID == uuid.Nil || readerID == uuid.Nil {
 		return nil, fmt.Errorf("%w: copyID или readerID", ErrEmptyID)
@@ -38,7 +39,7 @@ func Reserve(copyID, readerID uuid.UUID, now time.Time) (*Loan, error) {
 	}, nil
 }
 
-// Зафиксировать выдачу книги читателю
+// Issue фиксирует выдачу книги читателю на руки, выставляет due_at.
 func (l *Loan) Issue(now time.Time) error {
 	if !l.status.canTransitionTo(StatusIssued) {
 		return fmt.Errorf("%w: issue из %s", ErrInvalidTransition, l.status)
@@ -51,7 +52,7 @@ func (l *Loan) Issue(now time.Time) error {
 	return nil
 }
 
-// Зафиксировать возврат книги
+// Return фиксирует возврат книги.
 func (l *Loan) Return(now time.Time) error {
 	if !l.status.canTransitionTo(StatusReturned) {
 		return fmt.Errorf("%w: return из %s", ErrInvalidTransition, l.status)
@@ -62,7 +63,8 @@ func (l *Loan) Return(now time.Time) error {
 	return nil
 }
 
-// Перевести бронь в статус «истекла», если читатель не пришёл за книгой в течение 3 дней
+// Expire переводит бронь в статус «истекла», если читатель не пришёл за книгой
+// в течение ReservationTTL.
 func (l *Loan) Expire(now time.Time) error {
 	if !l.status.canTransitionTo(StatusExpired) {
 		return fmt.Errorf("%w: expire из %s", ErrInvalidTransition, l.status)
@@ -75,7 +77,8 @@ func (l *Loan) Expire(now time.Time) error {
 	return nil
 }
 
-// Пометить выдачу как просроченную, если срок возврата (dueAt) истёк, а книга не возвращена
+// MarkOverdue помечает выдачу как просроченную, если срок возврата (dueAt)
+// истёк, а книга не возвращена.
 func (l *Loan) MarkOverdue(now time.Time) error {
 	if !l.status.canTransitionTo(StatusOverdue) {
 		return fmt.Errorf("%w: overdue из %s", ErrInvalidTransition, l.status)
@@ -109,11 +112,27 @@ func Restore(
 		returnedAt: returnedAt,
 	}
 }
-func (l *Loan) ID() uuid.UUID          { return l.id }
-func (l *Loan) Status() Status         { return l.status }
-func (l *Loan) CopyID() uuid.UUID      { return l.copyID }
-func (l *Loan) ReaderID() uuid.UUID    { return l.readerID }
-func (l *Loan) ReservedAt() time.Time  { return l.reservedAt }
-func (l *Loan) DueAt() *time.Time      { return l.dueAt }
-func (l *Loan) IssuedAt() *time.Time   { return l.issuedAt }
+
+// ID возвращает идентификатор выдачи.
+func (l *Loan) ID() uuid.UUID { return l.id }
+
+// Status возвращает текущий статус выдачи.
+func (l *Loan) Status() Status { return l.status }
+
+// CopyID возвращает идентификатор забронированного/выданного экземпляра.
+func (l *Loan) CopyID() uuid.UUID { return l.copyID }
+
+// ReaderID возвращает идентификатор читателя.
+func (l *Loan) ReaderID() uuid.UUID { return l.readerID }
+
+// ReservedAt возвращает момент создания брони.
+func (l *Loan) ReservedAt() time.Time { return l.reservedAt }
+
+// DueAt возвращает срок возврата. nil, пока книга не выдана.
+func (l *Loan) DueAt() *time.Time { return l.dueAt }
+
+// IssuedAt возвращает момент выдачи книги на руки. nil, пока не выдана.
+func (l *Loan) IssuedAt() *time.Time { return l.issuedAt }
+
+// ReturnedAt возвращает момент возврата книги. nil, пока не возвращена.
 func (l *Loan) ReturnedAt() *time.Time { return l.returnedAt }

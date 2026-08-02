@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// ErrNoFreeCopy — среди экземпляров книги нет ни одного свободного.
 var ErrNoFreeCopy = errors.New("нет свободных экземпляров")
 
 // ICopyRepository - порт для работы с экземплярами книг.

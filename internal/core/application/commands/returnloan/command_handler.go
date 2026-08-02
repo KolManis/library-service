@@ -10,6 +10,7 @@ import (
 	"github.com/KolManis/library-service/internal/core/ports"
 )
 
+// Handler выполняет сценарий возврата книги.
 type Handler struct {
 	loans ports.ILoanRepository
 	fines ports.IFineRepository
@@ -17,6 +18,7 @@ type Handler struct {
 	now   func() time.Time
 }
 
+// NewHandler создаёт Handler с зависимостями, переданными через порты.
 func NewHandler(
 	loans ports.ILoanRepository,
 	fines ports.IFineRepository,

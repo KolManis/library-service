@@ -9,17 +9,21 @@ import (
 	"gorm.io/gorm"
 )
 
+// CopyRepository — gorm-реализация ports.ICopyRepository.
 type CopyRepository struct {
 	db *gorm.DB
 }
 
+// NewCopyRepository создаёт CopyRepository поверх открытого соединения gorm.
 func NewCopyRepository(db *gorm.DB) *CopyRepository {
 	return &CopyRepository{db: db}
 }
 
+// FindFreeCopyID возвращает id свободного (не списанного, без активной выдачи)
+// экземпляра книги. Свободных нет — ports.ErrNoFreeCopy.
 func (r *CopyRepository) FindFreeCopyID(ctx context.Context, bookID uuid.UUID) (uuid.UUID, error) {
-	// сканируем в структуру, а не в голый uuid.UUID: для полей структуры
-	// gorm использует конвертер uuid, для одиночной переменной-массива — нет
+	// Сканируем в структуру, а не в голый uuid.UUID: для полей структуры
+	// gorm использует конвертер uuid, для одиночной переменной-массива — нет.
 	var row struct{ ID uuid.UUID }
 	err := r.db.WithContext(ctx).Raw(`
 		SELECT c.id FROM copies c

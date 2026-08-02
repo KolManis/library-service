@@ -14,6 +14,7 @@ type Transactor struct {
 	db *gorm.DB
 }
 
+// NewTransactor создаёт Transactor поверх открытого соединения gorm.
 func NewTransactor(db *gorm.DB) *Transactor {
 	return &Transactor{db: db}
 }

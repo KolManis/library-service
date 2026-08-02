@@ -1,13 +1,19 @@
 package loan
 
+// Status — статус выдачи в машине переходов Loan.
 type Status string
 
 const (
+	// StatusReserved — книга забронирована, но ещё не выдана на руки.
 	StatusReserved Status = "reserved"
-	StatusIssued   Status = "issued"
+	// StatusIssued — книга выдана читателю на руки.
+	StatusIssued Status = "issued"
+	// StatusReturned — книга возвращена. Терминальный статус.
 	StatusReturned Status = "returned"
-	StatusExpired  Status = "expired"
-	StatusOverdue  Status = "overdue"
+	// StatusExpired — бронь не была востребована в течение ReservationTTL. Терминальный статус.
+	StatusExpired Status = "expired"
+	// StatusOverdue — книга выдана, но срок возврата (due_at) истёк.
+	StatusOverdue Status = "overdue"
 )
 
 var transitions = map[Status][]Status{
