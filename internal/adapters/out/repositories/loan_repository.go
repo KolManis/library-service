@@ -9,6 +9,7 @@ import (
 	"github.com/KolManis/library-service/internal/core/domain/aggregates/loan"
 	"github.com/KolManis/library-service/internal/core/ports"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )
 
@@ -63,7 +64,12 @@ func NewLoanRepository(db *gorm.DB) *LoanRepository {
 // Create сохраняет новую выдачу.
 func (r *LoanRepository) Create(ctx context.Context, l *loan.Loan) error {
 	m := toLoanModel(l)
-	return dbFromContext(ctx, r.db).Create(&m).Error
+	err := dbFromContext(ctx, r.db).Create(&m).Error
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return ports.ErrConcurrentReservation
+	}
+	return err
 }
 
 // GetByID возвращает выдачу по id. Не найдена — ports.ErrLoanNotFound.
