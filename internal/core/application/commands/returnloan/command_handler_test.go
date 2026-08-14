@@ -10,6 +10,7 @@ import (
 
 	"github.com/KolManis/library-service/internal/core/domain/aggregates/fine"
 	"github.com/KolManis/library-service/internal/core/domain/aggregates/loan"
+	"github.com/KolManis/library-service/internal/core/domain/events"
 	"github.com/KolManis/library-service/internal/core/ports"
 )
 
@@ -53,6 +54,17 @@ func (fakeTransactor) WithinTransaction(ctx context.Context, fn func(context.Con
 	return fn(ctx)
 }
 
+// fakeOutboxRepo — ручная заглушка для ports.IOutboxRepository.
+type fakeOutboxRepo struct {
+	appended []events.DomainEvent
+	err      error
+}
+
+func (f *fakeOutboxRepo) Append(ctx context.Context, evs []events.DomainEvent) error {
+	f.appended = append(f.appended, evs...)
+	return f.err
+}
+
 func TestHandler_Handle_ReturnOnTime_NoFine(t *testing.T) {
 	copyID := uuid.New()
 	readerID := uuid.New()
@@ -64,7 +76,7 @@ func TestHandler_Handle_ReturnOnTime_NoFine(t *testing.T) {
 
 	loans := &fakeLoanRepo{byID: l}
 	fines := &fakeFineRepo{}
-	handler := NewHandler(loans, fines, fakeTransactor{}, func() time.Time { return now })
+	handler := NewHandler(loans, fines, &fakeOutboxRepo{}, fakeTransactor{}, func() time.Time { return now })
 
 	cmd, err := NewCommand(l.ID())
 	require.NoError(t, err)
@@ -90,7 +102,7 @@ func TestHandler_Handle_ReturnOverdue_CreatesFine(t *testing.T) {
 
 	loans := &fakeLoanRepo{byID: l}
 	fines := &fakeFineRepo{}
-	handler := NewHandler(loans, fines, fakeTransactor{}, func() time.Time { return now })
+	handler := NewHandler(loans, fines, &fakeOutboxRepo{}, fakeTransactor{}, func() time.Time { return now })
 
 	cmd, err := NewCommand(l.ID())
 	require.NoError(t, err)
@@ -110,7 +122,7 @@ func TestHandler_Handle_ReturnOverdue_CreatesFine(t *testing.T) {
 func TestHandler_Handle_NotFound(t *testing.T) {
 	loans := &fakeLoanRepo{getErr: ports.ErrLoanNotFound}
 	fines := &fakeFineRepo{}
-	handler := NewHandler(loans, fines, fakeTransactor{}, time.Now)
+	handler := NewHandler(loans, fines, &fakeOutboxRepo{}, fakeTransactor{}, time.Now)
 
 	cmd, err := NewCommand(uuid.New())
 	require.NoError(t, err)
@@ -131,7 +143,7 @@ func TestHandler_Handle_InvalidTransition(t *testing.T) {
 
 	loans := &fakeLoanRepo{byID: l}
 	fines := &fakeFineRepo{}
-	handler := NewHandler(loans, fines, fakeTransactor{}, time.Now)
+	handler := NewHandler(loans, fines, &fakeOutboxRepo{}, fakeTransactor{}, time.Now)
 
 	cmd, err := NewCommand(l.ID())
 	require.NoError(t, err)

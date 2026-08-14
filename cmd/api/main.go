@@ -49,11 +49,12 @@ func main() {
 	copyRepo := repositories.NewCopyRepository(db)
 	loanRepo := repositories.NewLoanRepository(db)
 	fineRepo := repositories.NewFineRepository(db)
+	outboxRepo := repositories.NewOutboxRepository(db)
 	transactor := repositories.NewTransactor(db)
 
-	reserveHandler := reservecopy.NewHandler(copyRepo, loanRepo, time.Now)
-	issueHandler := issueloan.NewHandler(loanRepo, time.Now)
-	returnHandler := returnloan.NewHandler(loanRepo, fineRepo, transactor, time.Now)
+	reserveHandler := reservecopy.NewHandler(copyRepo, loanRepo, outboxRepo, transactor, time.Now)
+	issueHandler := issueloan.NewHandler(loanRepo, outboxRepo, transactor, time.Now)
+	returnHandler := returnloan.NewHandler(loanRepo, fineRepo, outboxRepo, transactor, time.Now)
 	readerLoansHandler := getreaderloans.NewHandler(loanRepo)
 
 	httpReserveHandler := httphandlers.NewReserveHandler(reserveHandler)

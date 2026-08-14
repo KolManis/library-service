@@ -70,14 +70,14 @@
     "id": "KAFKA-001",
     "title": "Доменные события + outbox: событие сохраняется одной транзакцией с агрегатом",
     "priority": "low",
-    "status": "planned",
+    "status": "done",
     "acceptance": [
       "Loan.Issue/Return/Expire/MarkOverdue/Reserve и Fine.NewFine поднимают событие (LoanChanged/FineCreated), доступное через PullEvents()",
       "Таблица outbox: событие пишется в одной транзакции с Update/Create агрегата (reservecopy/issueloan/returnloan используют ITransactor)",
       "Если Update/Create падает — строки в outbox тоже нет (проверка атомарности)"
     ],
-    "verification": "go test -tags=integration ./test/integration/...",
-    "notes": "Этап 4 из DESIGN.md, часть 1/3. Без Kafka и без protobuf — чистый DB-паттерн. См. решение 2.4."
+    "verification": "go test -tags=integration ./test/integration/... -run TestOutboxAtomicitySuite",
+    "notes": "Этап 4 из DESIGN.md, часть 1/3 закрыта. Без Kafka и без protobuf — чистый DB-паттерн. См. решение 2.4. Атомарность подтверждена test/integration/outbox_atomicity_test.go на реальном Postgres (форсированный сбой Append -> откат Create)."
   },
   {
     "id": "KAFKA-002",
@@ -104,6 +104,20 @@
     ],
     "verification": "go test -tags=integration ./test/integration/...",
     "notes": "Этап 4 из DESIGN.md, часть 3/3. Зависит от KAFKA-002. Новый статус — решение для DESIGN.md, не только код."
+  },
+  {
+    "id": "INFRA-EARLY-001",
+    "title": "golangci.yml + slog + graceful shutdown + error-mapping — дешевле сейчас, чем на выросшей кодовой базе",
+    "priority": "medium",
+    "status": "planned",
+    "acceptance": [
+      ".golangci.yml с errorlint, contextcheck, sqlclosecheck, forbidigo (запрет log.* и sql-вызовов без Context)",
+      "log.* в cmd/api/main.go заменён на slog",
+      "main.go: graceful shutdown через context.Context + signal.NotifyContext вместо e.Logger.Fatal",
+      "Единый error-mapping слой (domain error -> HTTP код/тело) вместо map[string]string в каждом хендлере"
+    ],
+    "verification": "golangci-lint run ./... && go build ./... && go test ./...",
+    "notes": "DESIGN.md §11 'Приоритет — сделать раньше, а не откладывать'. Вынесено из общего INFRA-BACKLOG с повышенным приоритетом: дешевле внедрить сейчас, пока кодовой базы мало, чем ретрофитить позже."
   },
   {
     "id": "WORKER-001",
@@ -165,5 +179,35 @@
     ],
     "verification": "pytest / newman run <collection>.json",
     "notes": "Не про продукт — SDET-практика (DESIGN.md §12). Нужен способ поднять сервис одной командой — зависит от Dockerfile/docker-compose из INFRA-BACKLOG."
+  },
+  {
+    "id": "GRPC-001",
+    "title": "gRPC-ручка GetReaderLoans — второй адаптер поверх getreaderloans.Handler",
+    "priority": "low",
+    "status": "planned",
+    "acceptance": [
+      "api/grpc/reader_loans.proto: сервис ReaderLoansService, RPC GetReaderLoans(reader_id) -> repeated LoanView",
+      "internal/adapters/in/grpc/reader_loans_server.go вызывает существующий getreaderloans.Handler, ядро не меняется",
+      "gRPC-сервер поднимается в cmd/api на отдельном порту рядом с HTTP",
+      "Ошибки замаплены на codes.InvalidArgument/codes.Internal",
+      "Тест через bufconn (in-memory, без сети и без Docker)"
+    ],
+    "verification": "go test ./internal/adapters/in/grpc/...",
+    "notes": "Не про продукт — демонстрация гексагона (DESIGN.md §12): один application-хендлер, два адаптера (HTTP и gRPC). Использует тот же buf, что и KAFKA-002 — общий тулинг."
+  },
+  {
+    "id": "RAG-001",
+    "title": "Рекомендации книг через RAG на локальной модели (Ollama + pgvector)",
+    "priority": "someday",
+    "status": "planned",
+    "acceptance": [
+      "Book расширен описанием/жанром — есть что эмбеддить",
+      "pgvector хранит эмбеддинги, не отдельный датастор",
+      "Порты IEmbedder/IBookSimilaritySearch/ITextGenerator в ядре, реализация в adapters/out/ollama",
+      "GET /readers/{id}/recommendations — query recommendbooks по образцу getreaderloans",
+      "Локальная модель (Ollama) — без внешних платных API и ключей"
+    ],
+    "verification": "n/a — не начато",
+    "notes": "DESIGN.md §13. Осознанно после всего остального (этапы 1-6, SDET-практика, GRPC-001) — демонстрация, что архитектура выдерживает новую область (AI/RAG) без переписывания ядра, не срочная задача."
   }
 ]
