@@ -119,3 +119,46 @@ Next session: начать `KAFKA-001` — proto-контракты событи
 
 Next session: запушить `feature/get-reader-loans`, открыть PR. Начать RACE-001
 (этап 3) — тест на овербукинг до добавления частичного уникального индекса.
+
+## 2026-08-14
+
+Task: KAFKA-001 (доменные события + outbox, этап 4 часть 1/3)
+
+Changed:
+- `internal/core/domain/events` — интерфейс `DomainEvent`.
+- `loan.LoanChanged`/`fine.FineCreated` — события, поле `events` + `PullEvents()`
+  на обоих агрегатах, подняты во всех переходах (`Reserve`/`Issue`/`Return`/
+  `Expire`/`MarkOverdue`/`NewFine`).
+- `migrations/00003_outbox.sql`, `ports.IOutboxRepository`,
+  `adapters/out/repositories/outbox_repository.go`.
+- `reservecopy`/`issueloan`/`returnloan` — все три хендлера обёрнуты в
+  `ITransactor`, вызывают `outbox.Append` внутри той же транзакции, что и
+  сохранение агрегата. `main.go` и все fake-тесты (`fakeOutboxRepo`,
+  `fakeTransactor`) обновлены под новые сигнатуры `NewHandler`.
+- `CopyRepository.FindFreeCopyID` переведён на `dbFromContext` (консистентность
+  с остальными репозиториями).
+- `test/integration/outbox_atomicity_test.go` — форсированный сбой
+  `outbox.Append` через `failingOutboxRepo`, проверка что `Create` тоже
+  откатился (прямой SQL по `loans`/`outbox`).
+- `DESIGN.md` §11 — новый подраздел «Приоритет — сделать раньше, а не
+  откладывать»: `.golangci.yml` (`errorlint`/`contextcheck`/`sqlclosecheck`/
+  `forbidigo`), `slog`, graceful shutdown, единый error-mapping слой. Заведена
+  `INFRA-EARLY-001` (`priority: medium`) под это.
+
+Verified:
+- `go build`/`go vet`/unit-тесты — чисто.
+- Полный integration-сьют на реальном Postgres: `CopyRepositorySuite`,
+  `LoanRepositorySuite`, `MigrationsSuite`, `RaceSuite`,
+  `OutboxAtomicitySuite` — все зелёные.
+- Атомарность outbox подтверждена не только код-ревью, а реальным прогоном:
+  форсированная ошибка `Append` → ни `Loan`, ни `outbox`-строка не появились.
+
+Remaining:
+- `KAFKA-001` закрыт полностью (этап 4 часть 1/3).
+- `INFRA-EARLY-001` — не начат, приоритет выше остального бэклога.
+- `KAFKA-002` (продюсер, `buf`/protobuf) и `KAFKA-003` (консьюмер,
+  `Loan.Cancelled`) — не начаты, зависят друг от друга по порядку.
+
+Next session: по обсуждению — сделать `INFRA-EARLY-001` перед `KAFKA-002`
+(дешевле внедрить линтеры/`slog`/graceful shutdown сейчас, чем после того как
+`KAFKA-002`/`003` добавят продюсера и консьюмера).

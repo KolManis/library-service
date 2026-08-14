@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/KolManis/library-service/internal/core/domain/events"
 	"github.com/google/uuid"
 )
 
@@ -22,6 +23,7 @@ type Loan struct {
 	issuedAt   *time.Time
 	dueAt      *time.Time
 	returnedAt *time.Time
+	events     []events.DomainEvent
 }
 
 // Reserve создаёт новую бронь (начало жизненного цикла выдачи).
@@ -29,14 +31,21 @@ func Reserve(copyID, readerID uuid.UUID, now time.Time) (*Loan, error) {
 	if copyID == uuid.Nil || readerID == uuid.Nil {
 		return nil, fmt.Errorf("%w: copyID или readerID", ErrEmptyID)
 	}
-
-	return &Loan{
+	l := &Loan{
 		id:         uuid.New(),
 		copyID:     copyID,
 		readerID:   readerID,
 		status:     StatusReserved,
 		reservedAt: now,
-	}, nil
+	}
+
+	l.events = append(l.events, LoanChanged{
+		LoanID:     l.id,
+		Status:     l.status,
+		OccurredAt: now,
+	})
+
+	return l, nil
 }
 
 // Issue фиксирует выдачу книги читателю на руки, выставляет due_at.
@@ -49,6 +58,11 @@ func (l *Loan) Issue(now time.Time) error {
 	l.issuedAt = &now
 	due := now.AddDate(0, 0, LoanPeriodDays)
 	l.dueAt = &due
+	l.events = append(l.events, LoanChanged{
+		LoanID:     l.id,
+		Status:     l.status,
+		OccurredAt: now,
+	})
 	return nil
 }
 
@@ -60,6 +74,11 @@ func (l *Loan) Return(now time.Time) error {
 
 	l.status = StatusReturned
 	l.returnedAt = &now
+	l.events = append(l.events, LoanChanged{
+		LoanID:     l.id,
+		Status:     l.status,
+		OccurredAt: now,
+	})
 	return nil
 }
 
@@ -74,6 +93,11 @@ func (l *Loan) Expire(now time.Time) error {
 	}
 
 	l.status = StatusExpired
+	l.events = append(l.events, LoanChanged{
+		LoanID:     l.id,
+		Status:     l.status,
+		OccurredAt: now,
+	})
 	return nil
 }
 
@@ -89,6 +113,11 @@ func (l *Loan) MarkOverdue(now time.Time) error {
 	}
 
 	l.status = StatusOverdue
+	l.events = append(l.events, LoanChanged{
+		LoanID:     l.id,
+		Status:     l.status,
+		OccurredAt: now,
+	})
 	return nil
 }
 
@@ -136,3 +165,11 @@ func (l *Loan) IssuedAt() *time.Time { return l.issuedAt }
 
 // ReturnedAt возвращает момент возврата книги. nil, пока не возвращена.
 func (l *Loan) ReturnedAt() *time.Time { return l.returnedAt }
+
+// PullEvents возвращает накопленные доменные события и очищает хранилище.
+// Вызывается application-слоем после сохранения агрегата, чтобы сохранить события в outbox.
+func (l *Loan) PullEvents() []events.DomainEvent {
+	evs := l.events
+	l.events = nil
+	return evs
+}

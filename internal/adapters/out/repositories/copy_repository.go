@@ -25,7 +25,7 @@ func (r *CopyRepository) FindFreeCopyID(ctx context.Context, bookID uuid.UUID) (
 	// Сканируем в структуру, а не в голый uuid.UUID: для полей структуры
 	// gorm использует конвертер uuid, для одиночной переменной-массива — нет.
 	var row struct{ ID uuid.UUID }
-	err := r.db.WithContext(ctx).Raw(`
+	err := dbFromContext(ctx, r.db).Raw(`
 		SELECT c.id FROM copies c
 		WHERE c.book_id = ?
 			AND NOT c.decommissioned

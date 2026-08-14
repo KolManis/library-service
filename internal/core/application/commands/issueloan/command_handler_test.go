@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KolManis/library-service/internal/core/domain/aggregates/loan"
+	"github.com/KolManis/library-service/internal/core/domain/events"
 	"github.com/KolManis/library-service/internal/core/ports"
 )
 
@@ -33,6 +34,25 @@ func (f *fakeLoanRepo) Update(ctx context.Context, l *loan.Loan) error {
 	return f.updErr
 }
 
+// fakeOutboxRepo — ручная заглушка для ports.IOutboxRepository.
+type fakeOutboxRepo struct {
+	appended []events.DomainEvent
+	err      error
+}
+
+func (f *fakeOutboxRepo) Append(ctx context.Context, evs []events.DomainEvent) error {
+	f.appended = append(f.appended, evs...)
+	return f.err
+}
+
+// fakeTransactor — ручная заглушка для ports.ITransactor: без реальной БД
+// и без реального отката, просто выполняет fn в том же контексте.
+type fakeTransactor struct{}
+
+func (fakeTransactor) WithinTransaction(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
+
 func TestHandler_Handle_Success(t *testing.T) {
 	copyID := uuid.New()
 	readerID := uuid.New()
@@ -43,7 +63,7 @@ func TestHandler_Handle_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	loans := &fakeLoanRepo{byID: l}
-	handler := NewHandler(loans, func() time.Time { return now })
+	handler := NewHandler(loans, &fakeOutboxRepo{}, fakeTransactor{}, func() time.Time { return now })
 
 	cmd, err := NewCommand(l.ID())
 	require.NoError(t, err)
@@ -61,7 +81,7 @@ func TestHandler_Handle_Success(t *testing.T) {
 
 func TestHandler_Handle_NotFound(t *testing.T) {
 	loans := &fakeLoanRepo{getErr: ports.ErrLoanNotFound}
-	handler := NewHandler(loans, time.Now)
+	handler := NewHandler(loans, &fakeOutboxRepo{}, fakeTransactor{}, time.Now)
 
 	cmd, err := NewCommand(uuid.New())
 	require.NoError(t, err)
@@ -83,7 +103,7 @@ func TestHandler_Handle_InvalidTransition(t *testing.T) {
 	l := loan.Restore(uuid.New(), copyID, readerID, loan.StatusIssued, reservedAt, &issuedAt, &dueAt, nil)
 
 	loans := &fakeLoanRepo{byID: l}
-	handler := NewHandler(loans, time.Now)
+	handler := NewHandler(loans, &fakeOutboxRepo{}, fakeTransactor{}, time.Now)
 
 	cmd, err := NewCommand(l.ID())
 	require.NoError(t, err)

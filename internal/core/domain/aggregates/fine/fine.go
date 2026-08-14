@@ -4,6 +4,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/KolManis/library-service/internal/core/domain/events"
 	"github.com/google/uuid"
 )
 
@@ -26,6 +27,7 @@ type Fine struct {
 	loanID uuid.UUID
 	amount float64
 	status Status
+	events []events.DomainEvent
 }
 
 // NewFine создаёт штраф за просрочку возврата книги. amount считается как
@@ -44,12 +46,19 @@ func NewFine(loanID uuid.UUID, dueAt, returnedAt time.Time) (*Fine, error) {
 	days := math.Ceil(returnedAt.Sub(dueAt).Hours() / 24)
 	amount := FineRatePerDay * days
 
-	return &Fine{
+	f := &Fine{
 		id:     uuid.New(),
 		loanID: loanID,
 		amount: amount,
 		status: StatusPending,
-	}, nil
+	}
+	f.events = append(f.events, FineCreated{
+		FineID:     f.id,
+		LoanID:     f.loanID,
+		Amount:     f.amount,
+		OccurredAt: returnedAt,
+	})
+	return f, nil
 }
 
 // Restore восстанавливает Fine из хранилища. Без валидации.
@@ -73,3 +82,11 @@ func (f *Fine) Amount() float64 { return f.amount }
 
 // Status возвращает статус штрафа (pending/paid).
 func (f *Fine) Status() Status { return f.status }
+
+// PullEvents возвращает накопленные доменные события и очищает хранилище.
+// Вызывается application-слоем после сохранения агрегата, чтобы сохранить события в outbox.
+func (f *Fine) PullEvents() []events.DomainEvent {
+	evs := f.events
+	f.events = nil
+	return evs
+}

@@ -12,24 +12,27 @@ import (
 
 // Handler выполняет сценарий возврата книги.
 type Handler struct {
-	loans ports.ILoanRepository
-	fines ports.IFineRepository
-	tx    ports.ITransactor
-	now   func() time.Time
+	loans  ports.ILoanRepository
+	fines  ports.IFineRepository
+	outbox ports.IOutboxRepository
+	tx     ports.ITransactor
+	now    func() time.Time
 }
 
 // NewHandler создаёт Handler с зависимостями, переданными через порты.
 func NewHandler(
 	loans ports.ILoanRepository,
 	fines ports.IFineRepository,
+	outbox ports.IOutboxRepository,
 	tx ports.ITransactor,
 	now func() time.Time,
 ) *Handler {
 	return &Handler{
-		loans: loans,
-		fines: fines,
-		tx:    tx,
-		now:   now,
+		loans:  loans,
+		fines:  fines,
+		outbox: outbox,
+		tx:     tx,
+		now:    now,
 	}
 }
 
@@ -58,21 +61,30 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) error {
 			return fmt.Errorf("сохранение выдачи: %w", err)
 		}
 
+		events := l.PullEvents()
 		// 5. Если была просрочка — создаём штраф.
 		//    DueAt не меняется при Return, можно читать после. Разыменовываем
 		//    без nil-проверки: overdue достижим только через MarkOverdue из
 		//    issued, а тот всегда ставит dueAt — тот же инвариант, на который
 		//    полагается сам MarkOverdue (см. loan.go).
 		if wasOverdue {
-			f, err := fine.NewFine(l.ID(), *l.DueAt(), now)
+			dueAt := l.DueAt()
+			if dueAt == nil {
+				return fmt.Errorf("dueAt отсутствует у просроченной выдачи")
+			}
+			f, err := fine.NewFine(l.ID(), *dueAt, now)
 			if err != nil {
 				return fmt.Errorf("создание штрафа: %w", err)
 			}
 			if err := h.fines.Create(ctx, f); err != nil {
 				return fmt.Errorf("сохранение штрафа: %w", err)
 			}
+			events = append(events, f.PullEvents()...)
 		}
 
+		if err := h.outbox.Append(ctx, events); err != nil {
+			return fmt.Errorf("сохранение событий: %w", err)
+		}
 		return nil
 	})
 }

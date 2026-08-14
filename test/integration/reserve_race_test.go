@@ -37,7 +37,9 @@ func (s *RaceSuite) SetupTest() {
 func (s *RaceSuite) TestReserve_ConcurrentRequests_NoOverbooking() {
 	copyRepo := repositories.NewCopyRepository(s.db)
 	loanRepo := repositories.NewLoanRepository(s.db)
-	handler := reservecopy.NewHandler(copyRepo, loanRepo, func() time.Time {
+	outboxRepo := repositories.NewOutboxRepository(s.db)
+	transactor := repositories.NewTransactor(s.db)
+	handler := reservecopy.NewHandler(copyRepo, loanRepo, outboxRepo, transactor, func() time.Time {
 		return time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
 	})
 
