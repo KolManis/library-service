@@ -4,6 +4,8 @@ package integration
 
 import (
 	"context"
+	"os"
+	"testing"
 
 	"github.com/go-testfixtures/testfixtures/v3"
 	"github.com/pressly/goose/v3"
@@ -23,9 +25,9 @@ type IntegrationSuite struct {
 	fixtures  *testfixtures.Loader
 }
 
-// SetupSuite — один раз перед ВСЕМИ тестами сьюта:
-// контейнер + миграции.
-func (s *IntegrationSuite) SetupSuite() {
+var sharedDB *gorm.DB
+
+func TestMain(m *testing.M) {
 	ctx := context.Background()
 	container, err := tcpostgres.Run(ctx, "postgres:16-alpine",
 		tcpostgres.WithDatabase("library_test"),
@@ -33,19 +35,45 @@ func (s *IntegrationSuite) SetupSuite() {
 		tcpostgres.WithPassword("test"),
 		tcpostgres.BasicWaitStrategies(),
 	)
-	s.Require().NoError(err)
-	s.container = container
+	if err != nil {
+		panic(err)
+	}
 
 	connStr, err := container.ConnectionString(ctx, "sslmode=disable")
-	s.Require().NoError(err)
+	if err != nil {
+		panic(err)
+	}
 
-	s.db, err = gorm.Open(gormpostgres.Open(connStr), &gorm.Config{})
-	s.Require().NoError(err)
+	sharedDB, err = gorm.Open(gormpostgres.Open(connStr), &gorm.Config{})
+	if err != nil {
+		panic(err)
+	}
+
+	sqlDB, err := sharedDB.DB()
+	if err != nil {
+		panic(err)
+	}
+	if err := goose.SetDialect("postgres"); err != nil {
+		panic(err)
+	}
+	if err := goose.Up(sqlDB, "../../migrations"); err != nil {
+		panic(err)
+	}
+
+	code := m.Run()
+
+	if err := testcontainers.TerminateContainer(container); err != nil {
+		panic(err)
+	}
+	os.Exit(code)
+}
+
+// SetupSuite — один раз перед тестами КАЖДОЙ сьюты: взять общую БД, настроить фикстуры.
+func (s *IntegrationSuite) SetupSuite() {
+	s.db = sharedDB
 
 	sqlDB, err := s.db.DB()
 	s.Require().NoError(err)
-	s.Require().NoError(goose.SetDialect("postgres"))
-	s.Require().NoError(goose.Up(sqlDB, "../../migrations"))
 
 	s.fixtures, err = testfixtures.New(
 		testfixtures.Database(sqlDB),
@@ -55,13 +83,8 @@ func (s *IntegrationSuite) SetupSuite() {
 	s.Require().NoError(err)
 }
 
-// TearDownSuite — один раз после всех тестов: убить контейнер.
-func (s *IntegrationSuite) TearDownSuite() {
-	s.Require().NoError(testcontainers.TerminateContainer(s.container))
-}
-
 // SetupTest — перед КАЖДЫМ тестом: чистая БД.
 func (s *IntegrationSuite) SetupTest() {
-	s.Require().NoError(s.db.Exec(`TRUNCATE TABLE fines, loans, copies, readers, books RESTART IDENTITY CASCADE`).Error)
+	s.Require().NoError(s.db.Exec(`TRUNCATE TABLE fines, loans, copies, readers, books, outbox RESTART IDENTITY CASCADE`).Error)
 	s.Require().NoError(s.fixtures.Load())
 }

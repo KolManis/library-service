@@ -36,23 +36,17 @@ func NewReaderLoansHandler(query *getreaderloans.Handler) *ReaderLoansHandler {
 func (h *ReaderLoansHandler) List(c echo.Context) error {
 	readerID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "невалидный readerID",
-		})
+		return respondBadRequest(c, "невалидный readerID")
 	}
 
 	q, err := getreaderloans.NewQuery(readerID)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": err.Error(),
-		})
+		return respondBadRequest(c, err.Error())
 	}
 
 	views, err := h.query.Handle(c.Request().Context(), q)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": "внутренняя ошибка сервера",
-		})
+		return respondError(c, err)
 	}
 
 	dtos := make([]readerLoanDTO, 0, len(views))
