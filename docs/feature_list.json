@@ -109,7 +109,7 @@
     "id": "INFRA-EARLY-001",
     "title": "golangci.yml + slog + graceful shutdown + error-mapping — дешевле сейчас, чем на выросшей кодовой базе",
     "priority": "medium",
-    "status": "planned",
+    "status": "done",
     "acceptance": [
       ".golangci.yml с errorlint, contextcheck, sqlclosecheck, forbidigo (запрет log.* и sql-вызовов без Context)",
       "log.* в cmd/api/main.go заменён на slog",
@@ -117,7 +117,7 @@
       "Единый error-mapping слой (domain error -> HTTP код/тело) вместо map[string]string в каждом хендлере"
     ],
     "verification": "golangci-lint run ./... && go build ./... && go test ./...",
-    "notes": "DESIGN.md §11 'Приоритет — сделать раньше, а не откладывать'. Вынесено из общего INFRA-BACKLOG с повышенным приоритетом: дешевле внедрить сейчас, пока кодовой базы мало, чем ретрофитить позже."
+    "notes": "DESIGN.md §11 'Приоритет — сделать раньше, а не откладывать'. Все 4 пункта закрыты отдельными коммитами на feature/infra-early, golangci-lint v2.5.0 проверен вживую (0 issues). Заодно исправлен один найденный при ревью баг: reader_loans_handler.go отдавал 400 вместо 500 на внутреннюю ошибку."
   },
   {
     "id": "WORKER-001",

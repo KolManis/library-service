@@ -162,3 +162,42 @@ Remaining:
 Next session: по обсуждению — сделать `INFRA-EARLY-001` перед `KAFKA-002`
 (дешевле внедрить линтеры/`slog`/graceful shutdown сейчас, чем после того как
 `KAFKA-002`/`003` добавят продюсера и консьюмера).
+
+## 2026-08-15
+
+Task: `INFRA-EARLY-001` (все 4 пункта), ускорение integration-тестов
+
+Changed:
+- Один Postgres-контейнер на весь integration-прогон вместо пяти (`TestMain`
+  вместо `SetupSuite`/`TearDownSuite` в каждой сьюте) — ~30-35с → ~13.5с.
+  Заодно нашли и починили дыру: `outbox` не было в `TRUNCATE` списке
+  `SetupTest` (осталось с миграции 00001, до появления таблицы outbox) —
+  с общим контейнером это стало бы реальной межсьютовой флаки-проблемой.
+- `.golangci.yml`: `errorlint`/`contextcheck`/`sqlclosecheck`/`forbidigo`
+  (запрет `log.*`). Формат v2 (`linters.settings`, не `linters-settings`) —
+  проверено реальной установкой `golangci-lint v2.5.0` локально, не только
+  по документации.
+- `log.*` в `cmd/api/main.go` → `slog` с JSON-хендлером. По пути поймали и
+  починили баг: `slog.Error("текст: %v", err)` — неправильное использование,
+  `slog` ждёт пары ключ-значение, не printf-строку.
+- Graceful shutdown: `signal.NotifyContext` + `e.Shutdown` с таймаутом 10с
+  вместо `e.Logger.Fatal(e.Start(...))`. По пути потерялся и вернулся дефолт
+  порта `8080` (`PORT` не задан → раньше слушал случайный порт).
+- Единый error-mapping слой: `internal/adapters/in/httphandlers/errors.go`
+  (`errorMapping` таблица + `respondError`/`respondBadRequest`) вместо
+  `errors.Is`-цепочек в каждом хендлере. Попутно исправлен баг в
+  `reader_loans_handler.go` — внутренняя ошибка сервера отдавалась как 400,
+  должна быть 500.
+
+Verified:
+- `golangci-lint run ./...` — 0 issues (реальный прогон, не предположение).
+- `go build`/`go vet`/unit-тесты/integration-тесты (`-tags=integration`)/
+  `gofmt` — всё чисто.
+- 4 отдельных коммита на `feature/infra-early`, один пункт — один коммит.
+
+Remaining:
+- `INFRA-EARLY-001` закрыт полностью.
+- Следующее по плану — `KAFKA-002`: `buf`, `.proto`-контракты, `cmd/outbox`.
+
+Next session: запушить `feature/infra-early`, открыть PR, обычным merge
+commit (не squash). После мержа — начать `KAFKA-002`.
