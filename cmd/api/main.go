@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"log/slog"
 	"os"
 	"time"
 
@@ -20,32 +20,36 @@ import (
 )
 
 func main() {
-	// 1. Подключение к Postgres
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		log.Fatal("DATABASE_URL не задан")
+		slog.Error("DATABASE_URL не задан")
+		os.Exit(1)
 	}
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatalf("ошибка подключения к БД: %v", err)
+		slog.Error("ошибка подключения к БД", "error", err)
+		os.Exit(1)
 	}
 
-	// 2. Миграции при старте — компромисс пет-проекта, в бою их гоняют
-	// отдельным шагом деплоя до запуска приложения
 	sqlDB, err := db.DB()
 	if err != nil {
-		log.Fatalf("получение sql.DB: %v", err)
+		slog.Error("получение sql.DB", "error", err)
+		os.Exit(1)
 	}
 	// миграции вшиты в бинарник (go:embed) — работают из любой директории
 	goose.SetBaseFS(migrations.FS)
 	if err := goose.SetDialect("postgres"); err != nil {
-		log.Fatalf("goose: %v", err)
+		slog.Error("goose", "error", err)
+		os.Exit(1)
 	}
 	if err := goose.Up(sqlDB, "."); err != nil {
-		log.Fatalf("миграции: %v", err)
+		slog.Error("миграции", "error", err)
+		os.Exit(1)
 	}
 
-	// 3. Сборка зависимостей
 	copyRepo := repositories.NewCopyRepository(db)
 	loanRepo := repositories.NewLoanRepository(db)
 	fineRepo := repositories.NewFineRepository(db)
@@ -62,18 +66,16 @@ func main() {
 	httpReturnHandler := httphandlers.NewReturnHandler(returnHandler)
 	httpReaderLoansHandler := httphandlers.NewReaderLoansHandler(readerLoansHandler)
 
-	// 4. Настройка Echo и маршрутов
 	e := echo.New()
 	e.POST("/books/:id/reserve", httpReserveHandler.Reserve)
 	e.POST("/loans/:id/issue", httpIssueHandler.Issue)
 	e.POST("/loans/:id/return", httpReturnHandler.Return)
 	e.GET("/readers/:id/loans", httpReaderLoansHandler.List)
 
-	// 5. Старт сервера
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
-	log.Printf("сервер запущен на порту %s", port)
+	slog.Info("сервер запущен", "port", port)
 	e.Logger.Fatal(e.Start(":" + port))
 }
