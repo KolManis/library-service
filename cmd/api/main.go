@@ -1,8 +1,13 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -76,6 +81,27 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		if err := e.Start(":" + port); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("сервер остановился с ошибкой", "error", err)
+			os.Exit(1)
+		}
+	}()
+
 	slog.Info("сервер запущен", "port", port)
-	e.Logger.Fatal(e.Start(":" + port))
+
+	<-ctx.Done()
+	slog.Info("получен сигнал остановки, завершаем работу")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := e.Shutdown(shutdownCtx); err != nil {
+		slog.Error("ошибка при остановке сервера", "error", err)
+		os.Exit(1)
+	}
 }
