@@ -6,39 +6,39 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/pressly/goose/v3"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 
 	"github.com/KolManis/library-service/internal/adapters/in/httphandlers"
 	"github.com/KolManis/library-service/internal/adapters/out/repositories"
+	"github.com/KolManis/library-service/internal/config"
 	"github.com/KolManis/library-service/internal/core/application/commands/issueloan"
 	"github.com/KolManis/library-service/internal/core/application/commands/reservecopy"
 	"github.com/KolManis/library-service/internal/core/application/commands/returnloan"
 	"github.com/KolManis/library-service/internal/core/application/queries/getreaderloans"
+	"github.com/KolManis/library-service/internal/infra"
 	"github.com/KolManis/library-service/migrations"
 )
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	slog.SetDefault(logger)
+	infra.NewLogger()
 
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		slog.Error("DATABASE_URL не задан")
-		os.Exit(1)
-	}
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	cfg, err := config.Load()
 	if err != nil {
-		slog.Error("ошибка подключения к БД", "error", err)
+		slog.Error("ошибка конфигурации", "error", err)
 		os.Exit(1)
 	}
 
+	db, err := infra.NewPostgres(cfg.DatabaseURL)
+	if err != nil {
+		slog.Error("подключение к БД", "error", err)
+		os.Exit(1)
+	}
+
+	// 2. Миграции при старте — компромисс пет-проекта, в бою их гоняют
+	// отдельным шагом деплоя до запуска приложения
 	sqlDB, err := db.DB()
 	if err != nil {
 		slog.Error("получение sql.DB", "error", err)
@@ -77,22 +77,17 @@ func main() {
 	e.POST("/loans/:id/return", httpReturnHandler.Return)
 	e.GET("/readers/:id/loans", httpReaderLoansHandler.List)
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := infra.ShutdownContext()
 	defer stop()
 
 	go func() {
-		if err := e.Start(":" + port); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error("сервер остановился с ошибкой", "error", err)
+		if err := e.Start(":" + cfg.Port); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("ошибка сервера", "error", err)
 			os.Exit(1)
 		}
 	}()
 
-	slog.Info("сервер запущен", "port", port)
+	slog.Info("сервер запущен", "port", cfg.Port)
 
 	<-ctx.Done()
 	slog.Info("получен сигнал остановки, завершаем работу")
@@ -101,7 +96,6 @@ func main() {
 	defer cancel()
 
 	if err := e.Shutdown(shutdownCtx); err != nil {
-		slog.Error("ошибка при остановке сервера", "error", err)
-		os.Exit(1)
+		slog.Error("ошибка graceful shutdown", "error", err)
 	}
 }
