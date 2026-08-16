@@ -83,14 +83,14 @@
     "id": "KAFKA-002",
     "title": "Kafka-продюсер: публикация событий из outbox (loan.changed, fine.created)",
     "priority": "low",
-    "status": "planned",
+    "status": "done",
     "acceptance": [
       "buf + protoc-gen-go генерируют Go-код из api/events/*.proto",
       "cmd/outbox читает неопубликованные строки, публикует в Kafka, помечает published_at",
       "Ключ сообщения — id агрегата (сохраняет порядок событий одного Loan/Fine в партиции)"
     ],
-    "verification": "go test -tags=integration ./test/integration/...",
-    "notes": "Этап 4 из DESIGN.md, часть 2/3. Зависит от KAFKA-001."
+    "verification": "go test -tags=integration ./test/integration/... -run TestOutboxWorkerSuite",
+    "notes": "Этап 4 из DESIGN.md, часть 2/3 закрыта. buf+protoc-gen-go (pkg/events/v1), IEventPublisher+KafkaPublisher (sarama), IOutboxReader+cmd/outbox (поллинг, JSON->proto), internal/infra и internal/config (устранили дублирование между cmd/api и cmd/outbox). Подтверждено реальным прогоном с testcontainers-go/modules/kafka: TestOutboxWorkerSuite — событие реально дошло до топика с верным ключом и protobuf-содержимым. По пути найден и обойдён регресс testcontainers-go v0.44.0 на Windows (rootless Docker false positive) — зафиксированы обе зависимости на v0.43.0."
   },
   {
     "id": "KAFKA-003",
@@ -158,15 +158,42 @@
   },
   {
     "id": "SDET-UI-001",
-    "title": "Минимальный веб-фронт + Playwright-автоматизация поверх него",
+    "title": "Веб-фронт (обычный DOM, не Flutter) + Playwright-автоматизация",
     "priority": "low",
     "status": "planned",
     "acceptance": [
-      "Простой фронт (не Go): список книг, бронирование, список своих броней",
-      "Playwright-тесты на ключевые пользовательские сценарии"
+      "Обычный веб-фронт (не Go, настоящий DOM — не Flutter Web/canvas): список книг с обложками, бронирование, список своих броней",
+      "Playwright-тесты на ключевые пользовательские сценарии через стандартные CSS-селекторы"
     ],
     "verification": "npx playwright test",
-    "notes": "Не про продукт — SDET-практика (DESIGN.md §12). Осознанное расширение scope: у library-service нет UI, фронт нужен только как площадка для автоматизации."
+    "notes": "Не про продукт — SDET-практика (DESIGN.md §12). Намеренно не Flutter Web: там CanvasKit-рендер прячет DOM за canvas, автоматизация нетипичная. Теперь есть и вторая причина существовать — реально показать обложки из BOOK-COVER-001. Зависит от BOOK-COVER-001 (иначе нечего отображать)."
+  },
+  {
+    "id": "BOOK-COVER-001",
+    "title": "Обложки книг: MinIO/S3, POST /books/{id}/cover",
+    "priority": "someday",
+    "status": "planned",
+    "acceptance": [
+      "Book.CoverKey — ссылка на объект в MinIO, не сам файл в Postgres",
+      "POST /books/{id}/cover принимает файл (multipart/form-data), заливает в MinIO, сохраняет ключ",
+      "Отдача обложки — presigned GET URL (ограниченный срок жизни), бакет не публичный",
+      "Код — через AWS SDK v2 (S3 API), совместим и с MinIO, и с настоящим AWS S3 без правок кода, переключение только конфигом"
+    ],
+    "verification": "go test -tags=integration ./test/integration/...",
+    "notes": "MinIO — self-hosted S3-совместимое хранилище, тот же принцип, что Postgres/Kafka в docker-compose/testcontainers (testcontainers-go/modules/minio для тестов). Начали с варианта 'прокси через сервер' (не presigned upload) — проще для первой реализации. Book сейчас (id/title/author/isbn) не имеет поля под обложку — расширение домена."
+  },
+  {
+    "id": "SDET-MOBILE-DESKTOP-001",
+    "title": "Flutter-приложение (мобилка + десктоп) + автоматизация",
+    "priority": "someday",
+    "status": "planned",
+    "acceptance": [
+      "Один Flutter-проект, таргеты Android/iOS и минимум одна десктоп-платформа (Windows/macOS/Linux)",
+      "Базовые сценарии library-service: список книг, бронирование",
+      "Автоматизация через integration_test/Appium — реальная мобильная и десктопная автоматизация, не веб-обходной путь"
+    ],
+    "verification": "flutter test integration_test/",
+    "notes": "Не про продукт — SDET-практика (DESIGN.md §12), цель — широта: разные технологии тестирования для разных платформ (веб-DOM/Playwright отдельно в SDET-UI-001, мобилка+десктоп здесь). Осознанно не Flutter Web — там та же проблема с canvas, что и в SDET-UI-001. Делать после SDET-UI-001."
   },
   {
     "id": "SDET-BLACKBOX-001",

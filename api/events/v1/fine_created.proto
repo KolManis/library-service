@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package events.v1;
+option go_package = "github.com/KolManis/library-service/pkg/events/v1;eventsv1";
+
+import "google/protobuf/timestamp.proto";
+
+message FineCreated {
+  string fine_id = 1;
+  string loan_id = 2;
+  string amount = 3;  
+  google.protobuf.Timestamp occurred_at = 4;
+}

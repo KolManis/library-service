@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/KolManis/library-service/internal/core/domain/events"
+	"github.com/KolManis/library-service/internal/core/ports"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -52,4 +53,35 @@ func (r *OutboxRepository) Append(ctx context.Context, evs []events.DomainEvent)
 		}
 	}
 	return nil
+}
+
+// FetchUnpublished возвращает до limit неопубликованных записей из outbox.
+func (r *OutboxRepository) FetchUnpublished(ctx context.Context, limit int) ([]ports.OutboxRecord, error) {
+	var models []outboxModel
+	if err := dbFromContext(ctx, r.db).
+		Where("published_at IS NULL").
+		Order("created_at ASC").
+		Limit(limit).
+		Find(&models).Error; err != nil {
+		return nil, err
+	}
+
+	records := make([]ports.OutboxRecord, 0, len(models))
+	for _, m := range models {
+		records = append(records, ports.OutboxRecord{
+			ID:        m.ID,
+			EventType: m.EventType,
+			Payload:   m.Payload,
+		})
+	}
+	return records, nil
+}
+
+// MarkPublished проставляет published_at = now() для записи с указанным ID.
+func (r *OutboxRepository) MarkPublished(ctx context.Context, id uuid.UUID) error {
+	return dbFromContext(ctx, r.db).
+		Model(&outboxModel{}).
+		Where("id = ?", id).
+		Update("published_at", time.Now()).
+		Error
 }

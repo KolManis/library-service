@@ -201,3 +201,72 @@ Remaining:
 
 Next session: запушить `feature/infra-early`, открыть PR, обычным merge
 commit (не squash). После мержа — начать `KAFKA-002`.
+
+## 2026-08-16
+
+Task: `KAFKA-002` (buf/proto-контракты, cmd/outbox, продюсер), UI/обложки в
+бэклог (веб + Flutter мобилка/десктоп), `infra`/`config` рефакторинг
+
+Changed:
+- `buf`+`protoc-gen-go` установлены и проверены. `.proto`-контракты —
+  `api/events/v1/loan_changed.proto`, `api/events/v1/fine_created.proto`.
+  Сгенерированный код — в `pkg/events/v1` (осознанно не `gen/`, решение
+  пользователя — `pkg/` для сгенерированных контрактов; `internal/` остаётся
+  для приватного кода). По пути поймали и починили нестыковку: `buf lint`
+  требует, чтобы путь `.proto`-файла совпадал с его package (`events.v1` →
+  `events/v1/`), а `go_package` в контракте должен указывать на реальное
+  расположение сгенерированного кода — иначе рассинхрон, который не всплывает,
+  пока никто не импортирует сгенерированный тип.
+- `ports.IEventPublisher` + `adapters/out/producers/kafka_publisher.go`
+  (sarama.SyncProducer). `ports.IOutboxReader` (`FetchUnpublished`/
+  `MarkPublished`) — отдельный порт от `IOutboxRepository.Append`, та же
+  логика разделения читающей/пишущей стороны, что у `ILoanRepository`/
+  `IReaderLoansReader`.
+- `adapters/out/producers/outbox_worker.go`: `Tick`/`Run` — поллинг outbox,
+  JSON (уже существующие `loan.LoanChanged`/`fine.FineCreated`, без
+  дублирования структур) → protobuf → `IEventPublisher.Publish`. Ключ
+  сообщения — id агрегата (гарантия порядка по партиции).
+- `cmd/outbox/main.go` — новый бинарник-воркер.
+- `internal/infra` (`NewLogger`, `NewPostgres`, `NewKafkaSyncProducer`,
+  `ShutdownContext`) + `internal/config` (`Load()`) — устранили дублирование
+  между `cmd/api` и `cmd/outbox` (подключение к БД, JSON-логгер, graceful
+  shutdown), до того как то же самое повторится в `cmd/book-consumer`
+  (`KAFKA-003`).
+- `test/integration/outbox_worker_test.go` — `testcontainers-go/modules/kafka`,
+  реальный брокер, полный путь: домен → outbox → воркер → топик → консьюмер
+  читает и проверяет ключ+protobuf-содержимое.
+- `.golangci.yml`: `--build-tags=integration` добавлен в CI (раньше
+  integration-код вообще не линтился).
+- Бэклог: `SDET-UI-001` уточнён (обычный DOM, не Flutter Web — CanvasKit
+  прячет DOM, автоматизация нетипичная), `BOOK-COVER-001` (MinIO/S3, обложки
+  книг), `SDET-MOBILE-DESKTOP-001` (Flutter — мобилка+десктоп, отдельно от
+  веба, чтобы не сужать практику до одного фреймворка).
+
+Проблемы по пути (не баги фичи, но реальные находки):
+- Регресс `testcontainers-go v0.44.0` на Windows: `rootless Docker is not
+  supported on Windows` — ломало ВСЕ integration-тесты, не только Kafka.
+  Причина — апгрейд ядра `testcontainers-go` до `v0.44.0` вслед за модулем
+  `modules/kafka`. Зафиксировали обе зависимости на `v0.43.0` — рабочая
+  версия, все тесты снова проходят.
+- При рефакторинге `cmd/api/main.go` под `infra`/`config` потерялись:
+  вызов миграций (`goose.Up`) — критично, ломает сервис на чистой БД;
+  `errors.Is` заменился на `!=` (нарушение своего же `errorlint`); мёртвая
+  переменная `port`; таймаут graceful shutdown; `os.Exit(1)` на ошибках
+  старта заменился на `return` (код выхода 0 при реальном сбое — process
+  manager не поймёт, что нужно перезапускать). Всё найдено `golangci-lint`
+  (`errorlint`/`contextcheck`/`ineffassign`) + вручную, исправлено.
+
+Verified:
+- `golangci-lint run ./...` и `--build-tags=integration` — `0 issues` в обоих
+  режимах.
+- Полный integration-сьют (6 сьютов, включая `TestOutboxWorkerSuite`) —
+  реальный Docker, реальная Kafka, `44.7с` целиком после кэширования образа.
+- `go build`/`go vet`/unit-тесты — чисто.
+
+Remaining:
+- `KAFKA-002` закрыт полностью — этап 4 из DESIGN.md, часть 2/3.
+- `KAFKA-003` (консьюмер `book.decommissioned`, `Loan.Cancelled`) — следующее
+  по плану, часть 3/3 этапа 4.
+
+Next session: закоммитить и запушить `feature/kafka-producer`, открыть PR.
+После мержа — `KAFKA-003`.

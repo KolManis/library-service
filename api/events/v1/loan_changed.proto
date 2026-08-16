@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package events.v1;
+option go_package = "github.com/KolManis/library-service/pkg/events/v1;eventsv1";
+
+import "google/protobuf/timestamp.proto";
+
+message LoanChanged {
+  string loan_id = 1;
+  string status = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+}
