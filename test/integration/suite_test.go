@@ -20,9 +20,8 @@ import (
 // Конкретные сьюты встраивают её и получают всё бесплатно.
 type IntegrationSuite struct {
 	suite.Suite
-	db        *gorm.DB
-	container *tcpostgres.PostgresContainer
-	fixtures  *testfixtures.Loader
+	db       *gorm.DB
+	fixtures *testfixtures.Loader
 }
 
 var sharedDB *gorm.DB
