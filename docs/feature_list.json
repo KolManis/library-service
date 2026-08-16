@@ -83,14 +83,14 @@
     "id": "KAFKA-002",
     "title": "Kafka-продюсер: публикация событий из outbox (loan.changed, fine.created)",
     "priority": "low",
-    "status": "planned",
+    "status": "done",
     "acceptance": [
       "buf + protoc-gen-go генерируют Go-код из api/events/*.proto",
       "cmd/outbox читает неопубликованные строки, публикует в Kafka, помечает published_at",
       "Ключ сообщения — id агрегата (сохраняет порядок событий одного Loan/Fine в партиции)"
     ],
-    "verification": "go test -tags=integration ./test/integration/...",
-    "notes": "Этап 4 из DESIGN.md, часть 2/3. Зависит от KAFKA-001."
+    "verification": "go test -tags=integration ./test/integration/... -run TestOutboxWorkerSuite",
+    "notes": "Этап 4 из DESIGN.md, часть 2/3 закрыта. buf+protoc-gen-go (pkg/events/v1), IEventPublisher+KafkaPublisher (sarama), IOutboxReader+cmd/outbox (поллинг, JSON->proto), internal/infra и internal/config (устранили дублирование между cmd/api и cmd/outbox). Подтверждено реальным прогоном с testcontainers-go/modules/kafka: TestOutboxWorkerSuite — событие реально дошло до топика с верным ключом и protobuf-содержимым. По пути найден и обойдён регресс testcontainers-go v0.44.0 на Windows (rootless Docker false positive) — зафиксированы обе зависимости на v0.43.0."
   },
   {
     "id": "KAFKA-003",
