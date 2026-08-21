@@ -93,17 +93,33 @@
     "notes": "Этап 4 из DESIGN.md, часть 2/3 закрыта. buf+protoc-gen-go (pkg/events/v1), IEventPublisher+KafkaPublisher (sarama), IOutboxReader+cmd/outbox (поллинг, JSON->proto), internal/infra и internal/config (устранили дублирование между cmd/api и cmd/outbox). Подтверждено реальным прогоном с testcontainers-go/modules/kafka: TestOutboxWorkerSuite — событие реально дошло до топика с верным ключом и protobuf-содержимым. По пути найден и обойдён регресс testcontainers-go v0.44.0 на Windows (rootless Docker false positive) — зафиксированы обе зависимости на v0.43.0."
   },
   {
+    "id": "COPY-001",
+    "title": "Списать конкретный экземпляр — POST /copies/{id}/decommission",
+    "priority": "medium",
+    "status": "planned",
+    "acceptance": [
+      "Новый терминальный статус Loan.Cancelled (переход разрешён только из reserved, не из issued)",
+      "decommissioned=true проставляется на конкретную Copy по id",
+      "Если на копию сейчас reserved-бронь — она отменяется (Loan.Cancelled) в той же транзакции",
+      "Если копия сейчас issued — ничего не отменяем, только флаг; возврат идёт штатным Return, Return не проверяет decommissioned",
+      "copyID не найден -> 404"
+    ],
+    "verification": "go test ./internal/core/application/commands/decommissioncopy/... && go test -tags=integration ./test/integration/...",
+    "notes": "Внутренняя синхронная команда (не Kafka) — библиотекарь сам решает списать конкретный экземпляр (потерян/повреждён). Вводит Loan.Cancelled и Loan.Cancel() — общий доменный примитив, который потом переиспользует KAFKA-003 для книжного консьюмера."
+  },
+  {
     "id": "KAFKA-003",
-    "title": "Консьюмер book.decommissioned: списание Copy + отмена активных броней",
+    "title": "Консьюмер book.decommissioned: списание всех Copy книги + отмена активных броней",
     "priority": "low",
     "status": "planned",
     "acceptance": [
-      "Новый терминальный статус Loan.Cancelled (только из reserved, не из issued)",
-      "Консьюмер списывает все Copy книги (decommissioned=true) и отменяет reserved-брони на них",
-      "Идемпотентность: повторная обработка того же события book.decommissioned не падает"
+      "Консьюмер декодирует protobuf-событие book.decommissioned (внешний продюсер — гипотетическая система каталога, в этом проекте не реализуется)",
+      "Списывает все Copy книги (decommissioned=true) и отменяет reserved-брони на них (переиспользует Loan.Cancel() из COPY-001)",
+      "issued-брони не трогает — читатель возвращает книгу штатно, копия просто больше не предлагается новым броням",
+      "Идемпотентность: повторная обработка того же события book.decommissioned не падает (естественная — после первого прогона reserved-броней на эти копии уже нет)"
     ],
     "verification": "go test -tags=integration ./test/integration/...",
-    "notes": "Этап 4 из DESIGN.md, часть 3/3. Зависит от KAFKA-002. Новый статус — решение для DESIGN.md, не только код."
+    "notes": "Этап 4 из DESIGN.md, часть 3/3. Зависит от KAFKA-002 и COPY-001 (доменный примитив Loan.Cancelled переиспользуется, а не дублируется)."
   },
   {
     "id": "INFRA-EARLY-001",
