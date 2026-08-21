@@ -102,9 +102,8 @@ func (r *LoanRepository) FindByReaderID(ctx context.Context, readerID uuid.UUID)
 		return nil, err
 	}
 
-	views := make([]ports.LoanView, 0, len(models))
-	for _, m := range models {
-		views = append(views, ports.LoanView{
+	return mapSlice(models, func(m loanModel) ports.LoanView {
+		return ports.LoanView{
 			LoanID:     m.ID,
 			CopyID:     m.CopyID,
 			Status:     m.Status,
@@ -112,7 +111,6 @@ func (r *LoanRepository) FindByReaderID(ctx context.Context, readerID uuid.UUID)
 			IssuedAt:   m.IssuedAt,
 			DueAt:      m.DueAt,
 			ReturnedAt: m.ReturnedAt,
-		})
-	}
-	return views, nil
+		}
+	}), nil
 }

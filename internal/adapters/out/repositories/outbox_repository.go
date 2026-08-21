@@ -66,15 +66,9 @@ func (r *OutboxRepository) FetchUnpublished(ctx context.Context, limit int) ([]p
 		return nil, err
 	}
 
-	records := make([]ports.OutboxRecord, 0, len(models))
-	for _, m := range models {
-		records = append(records, ports.OutboxRecord{
-			ID:        m.ID,
-			EventType: m.EventType,
-			Payload:   m.Payload,
-		})
-	}
-	return records, nil
+	return mapSlice(models, func(m outboxModel) ports.OutboxRecord {
+		return ports.OutboxRecord{ID: m.ID, EventType: m.EventType, Payload: m.Payload}
+	}), nil
 }
 
 // MarkPublished проставляет published_at = now() для записи с указанным ID.
