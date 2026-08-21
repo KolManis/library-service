@@ -14,10 +14,12 @@ const (
 	StatusExpired Status = "expired"
 	// StatusOverdue — книга выдана, но срок возврата (due_at) истёк.
 	StatusOverdue Status = "overdue"
+	// StatusCancelled — бронь отменена (списание экземпляра/книги). Терминальный статус.
+	StatusCancelled Status = "cancelled"
 )
 
 var transitions = map[Status][]Status{
-	StatusReserved: {StatusIssued, StatusExpired},
+	StatusReserved: {StatusIssued, StatusExpired, StatusCancelled},
 	StatusIssued:   {StatusReturned, StatusOverdue},
 	StatusOverdue:  {StatusReturned},
 }

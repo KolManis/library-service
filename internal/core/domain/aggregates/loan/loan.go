@@ -121,6 +121,25 @@ func (l *Loan) MarkOverdue(now time.Time) error {
 	return nil
 }
 
+// Cancel отменяет бронь из-за списания экземпляра/книги.
+// Переход разрешён только из статуса Reserved. Для уже выданных книг
+// (Issued/Overdue) отмена невозможна — читатель должен вернуть их обычным способом.
+// После отмены бронь переходит в терминальный статус Cancelled и не может
+// быть изменена другими операциями.
+func (l *Loan) Cancel(now time.Time) error {
+	if !l.status.canTransitionTo(StatusCancelled) {
+		return fmt.Errorf("%w: cancel из %s", ErrInvalidTransition, l.status)
+	}
+
+	l.status = StatusCancelled
+	l.events = append(l.events, LoanChanged{
+		LoanID:     l.id,
+		Status:     l.status,
+		OccurredAt: now,
+	})
+	return nil
+}
+
 // Restore восстанавливает Loan из хранилища. ТОЛЬКО для адаптеров
 // персистентности: валидация не выполняется — данные уже прошли её
 // при создании. Для новых выдач используйте Reserve.
