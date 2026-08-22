@@ -422,12 +422,18 @@ testcontainers-go · golangci-lint · google/uuid
 
 ### Живучесть процесса
 
-- Graceful shutdown по SIGTERM (сейчас `e.Logger.Fatal(e.Start(...))` — при `kill`
-  соединения обрываются, in-flight запросы теряются).
+- ~~Graceful shutdown по SIGTERM~~ — сделано в `INFRA-EARLY-001` (`signal.NotifyContext`
+  + `e.Shutdown(ctx)` с таймаутом, `cmd/api` и `cmd/outbox`).
 - Таймауты на все внешние вызовы (context deadline на запросы к БД), лимиты пула
   соединений gorm (`SetMaxOpenConns` и т.п.) — сейчас не настроены.
 - Идемпотентность Kafka-консьюмера `book.decommissioned`: at-least-once доставка
   означает дубли, нужен dedupe по ключу события.
+- Экспоненциальный backoff с джиттером на retry публикации в Kafka — это уровень
+  самого запроса (`sarama.Config.Producer.Retry.BackoffFunc` в `internal/infra/kafka.go`),
+  не внешний тикер outbox worker: сейчас у sarama фиксированный backoff без
+  джиттера. Тикер `Tick`/`interval` трогать не нужно — он обрабатывает пакет
+  записей разом, растягивать его после сбоя одной записи задержало бы и все
+  остальные.
 
 ### API-слой
 
@@ -436,6 +442,9 @@ testcontainers-go · golangci-lint · google/uuid
 - Аутентификация/авторизация — сейчас `POST /books/{id}/reserve` бронирует от имени
   любого `reader_id` без проверки, что вызывающий — этот читатель.
 - OpenAPI-спека, пагинация для `GET /readers/{id}/loans`.
+- Rate limiting на эндпоинтах (429 + заголовок `Retry-After`) — обратная сторона
+  клиентского backoff+jitter: сервер защищается от шторма повторов, а не сам их
+  делает. Естественно ляжет как echo-middleware поверх текущих 4 хендлеров.
 
 ### Данные
 
