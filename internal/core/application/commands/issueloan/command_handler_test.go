@@ -34,6 +34,10 @@ func (f *fakeLoanRepo) Update(ctx context.Context, l *loan.Loan) error {
 	return f.updErr
 }
 
+func (f *fakeLoanRepo) FindReservedByCopyID(ctx context.Context, copyID uuid.UUID) (*loan.Loan, error) {
+	return nil, nil // в этих тестах не используется
+}
+
 // fakeOutboxRepo — ручная заглушка для ports.IOutboxRepository.
 type fakeOutboxRepo struct {
 	appended []events.DomainEvent

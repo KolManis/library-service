@@ -114,3 +114,19 @@ func (r *LoanRepository) FindByReaderID(ctx context.Context, readerID uuid.UUID)
 		}
 	}), nil
 }
+
+// FindReservedByCopyID возвращает активную бронь (status = reserved) для
+// указанной копии. Такой брони нет — (nil, nil), это не ошибка.
+func (r *LoanRepository) FindReservedByCopyID(ctx context.Context, copyID uuid.UUID) (*loan.Loan, error) {
+	var m loanModel
+	err := dbFromContext(ctx, r.db).
+		Where("copy_id = ? AND status = ?", copyID, loan.StatusReserved).
+		First(&m).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return toLoanDomain(m), nil
+}

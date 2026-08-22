@@ -35,6 +35,10 @@ func (f *fakeLoanRepo) Update(ctx context.Context, l *loan.Loan) error {
 	return f.updErr
 }
 
+func (f *fakeLoanRepo) FindReservedByCopyID(ctx context.Context, copyID uuid.UUID) (*loan.Loan, error) {
+	return nil, nil // в этих тестах не используется
+}
+
 // fakeFineRepo — ручная заглушка для ports.IFineRepository.
 type fakeFineRepo struct {
 	created *fine.Fine // сюда запишется переданный Fine при Create

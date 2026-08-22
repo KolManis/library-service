@@ -77,6 +77,24 @@ func (s *CopyRepositorySuite) TestFindFree_UnknownBook() {
 	s.Require().ErrorIs(err, ports.ErrNoFreeCopy)
 }
 
+// TestDecommission_Success — списанный экземпляр перестаёт считаться
+// свободным: единственный оставшийся свободный — тот, что не списывали.
+func (s *CopyRepositorySuite) TestDecommission_Success() {
+	ctx := context.Background()
+
+	s.Require().NoError(s.copies.DecommissionByID(ctx, fixtureCopyID2))
+
+	got, err := s.copies.FindFreeCopyID(ctx, fixtureBookID)
+	s.Require().NoError(err)
+	s.Require().Equal(fixtureCopyID, got)
+}
+
+// TestDecommission_NotFound — несуществующий id — ports.ErrCopyNotFound.
+func (s *CopyRepositorySuite) TestDecommission_NotFound() {
+	err := s.copies.DecommissionByID(context.Background(), uuid.New())
+	s.Require().ErrorIs(err, ports.ErrCopyNotFound)
+}
+
 func TestCopyRepositorySuite(t *testing.T) {
 	suite.Run(t, new(CopyRepositorySuite))
 }

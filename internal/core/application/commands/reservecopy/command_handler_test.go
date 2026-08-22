@@ -24,6 +24,10 @@ func (f *fakeCopyRepo) FindFreeCopyID(ctx context.Context, bookID uuid.UUID) (uu
 	return f.id, f.err
 }
 
+func (f *fakeCopyRepo) DecommissionByID(ctx context.Context, copyID uuid.UUID) error {
+	return f.err
+}
+
 // fakeOutboxRepo — ручная заглушка для ports.IOutboxRepository.
 type fakeOutboxRepo struct {
 	appended []events.DomainEvent
@@ -60,6 +64,10 @@ func (f *fakeLoanRepo) GetByID(ctx context.Context, id uuid.UUID) (*loan.Loan, e
 
 func (f *fakeLoanRepo) Update(ctx context.Context, l *loan.Loan) error {
 	return nil // в этих тестах не используется
+}
+
+func (f *fakeLoanRepo) FindReservedByCopyID(ctx context.Context, copyID uuid.UUID) (*loan.Loan, error) {
+	return nil, nil // в этих тестах не используется
 }
 
 func TestHandler_Handle_Success(t *testing.T) {
