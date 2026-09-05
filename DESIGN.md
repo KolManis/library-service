@@ -462,6 +462,23 @@ testcontainers-go · golangci-lint · google/uuid
 
 ### CI/безопасность
 
+- Git-хуки через `lefthook` — быстрые проверки локально, до пуша, а не только
+  в CI. Референс: `backend-trainee-assignment-autumn-2026-kolmanis` (`lefthook.yml`):
+  `pre-commit` — только быстрое (`golangci-lint fmt --diff` без авто-фикса,
+  `golangci-lint run --fast-only`, ~2с), чтобы хук не начали обходить через
+  `--no-verify`; `commit-msg` — Conventional Commits через отдельный shell-скрипт
+  (не инлайн в yaml — не ломается на спецсимволах при подстановке аргументов);
+  `pre-push` — уже дороже: полный `go build`, полный `golangci-lint run`, `go test ./...`.
+- CI-джобы с явным графом зависимостей (`needs`), а не один плоский список —
+  тот же референс-проект: `generate → lint/unit → functional (testcontainers) → e2e
+  (docker-compose up + сценарий, логи при падении, down всегда)`. Дешёвые проверки
+  блокируют дорогие (Docker поднимается только если lint/unit уже зелёные), а не
+  наоборот.
+- `golangci-lint-action`: `verify: false` — по умолчанию action сверяет `.golangci.yml`
+  со схемой на golangci-lint.run, внешний запрос один раз зафейлился по таймауту
+  и уронил сборку без вины кода/конфига. Сборка не должна зависеть от доступности
+  стороннего сайта; невалидный конфиг всё равно роняет сам `golangci-lint run`,
+  просто с локальной диагностикой.
 - `govulncheck` в CI (сканирование уязвимостей зависимостей).
 - Кэш Go-модулей в actions, если ещё не кэшируется.
 - Подписание образов (`cosign`, Sigstore): keyless-подпись через OIDC GitHub Actions
