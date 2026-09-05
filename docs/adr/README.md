@@ -23,9 +23,9 @@
 | [0005](0005-loan-cancelled-only-from-reserved.md) | Loan.Cancelled — отмена только из reserved, не из issued | принято |
 | [0006](0006-book-vs-copy-decommission.md) | Списание книги (внешнее событие) vs списание копии (внутренняя команда) | принято |
 | [0007](0007-testing-strategy.md) | Тестовая стратегия: unit на домене, testcontainers на реальных зависимостях | принято |
-| 0008 | Fine создаётся application-слоем, а не доменом Loan | planned |
-| 0009 | Время — параметром в домен, не `time.Now()` внутри агрегата | planned |
-| 0010 | CQRS: раздельные read/write порты на одной и той же таблице | planned |
-| 0011 | Единый error-mapping слой вместо ручного `map[string]string` на хендлер | planned |
-| 0012 | Структурные логи (slog) + graceful shutdown вместо `e.Logger.Fatal` | planned |
-| 0013 | golangci-lint v2 с расширенным набором линтеров — раньше, а не потом | planned |
+| [0008](0008-fine-created-by-application-layer.md) | Fine создаётся application-слоем, а не доменом Loan | принято |
+| [0009](0009-time-as-parameter.md) | Время — параметром в домен, не `time.Now()` внутри агрегата | принято |
+| [0010](0010-cqrs-read-write-ports.md) | CQRS: раздельные read/write порты на одной и той же таблице | принято |
+| [0011](0011-unified-error-mapping.md) | Единый error-mapping слой вместо ручного `map[string]string` на хендлер | принято |
+| [0012](0012-slog-and-graceful-shutdown.md) | Структурные логи (slog) + graceful shutdown вместо `e.Logger.Fatal` | принято |
+| [0013](0013-golangci-lint-early.md) | golangci-lint v2 с расширенным набором линтеров — раньше, а не потом | принято |
