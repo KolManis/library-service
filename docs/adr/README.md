@@ -19,7 +19,13 @@
 | [0001](0001-hexagonal-architecture.md) | Гексагональная архитектура (порты и адаптеры) | принято |
 | [0002](0002-loan-owns-availability.md) | Loan, а не Copy, владеет фактом «экземпляр занят» | принято |
 | [0003](0003-transactional-outbox.md) | Transactional outbox для доставки доменных событий | принято |
-| 0004 | Партиционный уникальный индекс как контроль гонки за экземпляр | planned |
-| 0005 | Loan.Cancelled — отмена только из reserved, не из issued | planned |
-| 0006 | Списание книги (внешнее событие) vs списание копии (внутренняя команда) | planned |
-| 0007 | Тестовая стратегия: unit на домене, testcontainers на реальных зависимостях | planned |
+| [0004](0004-partial-unique-index-race-control.md) | Партиционный уникальный индекс как контроль гонки за экземпляр | принято |
+| [0005](0005-loan-cancelled-only-from-reserved.md) | Loan.Cancelled — отмена только из reserved, не из issued | принято |
+| [0006](0006-book-vs-copy-decommission.md) | Списание книги (внешнее событие) vs списание копии (внутренняя команда) | принято |
+| [0007](0007-testing-strategy.md) | Тестовая стратегия: unit на домене, testcontainers на реальных зависимостях | принято |
+| 0008 | Fine создаётся application-слоем, а не доменом Loan | planned |
+| 0009 | Время — параметром в домен, не `time.Now()` внутри агрегата | planned |
+| 0010 | CQRS: раздельные read/write порты на одной и той же таблице | planned |
+| 0011 | Единый error-mapping слой вместо ручного `map[string]string` на хендлер | planned |
+| 0012 | Структурные логи (slog) + graceful shutdown вместо `e.Logger.Fatal` | planned |
+| 0013 | golangci-lint v2 с расширенным набором линтеров — раньше, а не потом | planned |
