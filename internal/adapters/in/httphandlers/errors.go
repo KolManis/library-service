@@ -20,6 +20,7 @@ var errorMapping = []struct {
 	{ports.ErrConcurrentReservation, http.StatusConflict, "экземпляр только что заняли, попробуйте ещё раз"},
 	{ports.ErrLoanNotFound, http.StatusNotFound, "выдача не найдена"},
 	{loan.ErrInvalidTransition, http.StatusConflict, "недопустимый переход статуса"},
+	{ports.ErrCopyNotFound, http.StatusNotFound, "экземпляр не найден"},
 }
 
 // respondError маппит ошибку на HTTP-ответ по таблице выше. Не нашли — 500.
