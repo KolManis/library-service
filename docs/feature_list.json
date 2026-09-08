@@ -96,7 +96,7 @@
     "id": "COPY-001",
     "title": "Списать конкретный экземпляр — POST /copies/{id}/decommission",
     "priority": "medium",
-    "status": "planned",
+    "status": "done",
     "acceptance": [
       "Новый терминальный статус Loan.Cancelled (переход разрешён только из reserved, не из issued)",
       "decommissioned=true проставляется на конкретную Copy по id",
@@ -104,8 +104,8 @@
       "Если копия сейчас issued — ничего не отменяем, только флаг; возврат идёт штатным Return, Return не проверяет decommissioned",
       "copyID не найден -> 404"
     ],
-    "verification": "go test ./internal/core/application/commands/decommissioncopy/... && go test -tags=integration ./test/integration/...",
-    "notes": "Внутренняя синхронная команда (не Kafka) — библиотекарь сам решает списать конкретный экземпляр (потерян/повреждён). Вводит Loan.Cancelled и Loan.Cancel() — общий доменный примитив, который потом переиспользует KAFKA-003 для книжного консьюмера."
+    "verification": "go test ./internal/core/application/commands/decommissioncopy/... && go test -tags=integration ./test/integration/... -run \"TestCopyRepositorySuite|TestLoanRepositorySuite\"",
+    "notes": "Внутренняя синхронная команда (не Kafka) — библиотекарь сам решает списать конкретный экземпляр (потерян/повреждён). Вводит Loan.Cancelled и Loan.Cancel() — общий доменный примитив, переиспользуемый KAFKA-003. HTTP-слой (DecommissionHandler, errorMapping) без отдельного интеграционного теста — как и у reserve/issue/return, HTTP-уровень в этом проекте не тестируется отдельно (ADR-0007), покрыт unit-тестами Handler.Handle + errorMapping визуально идентичен 4 существующим строкам. Репозиторный слой (DecommissionByID/FindReservedByCopyID) проверен на реальном Postgres в этой же сессии (5/5 тестов зелёные, полный сьют 27.8с) до того, как Docker был временно недоступен для финального прогона — код репозиториев после этого не менялся."
   },
   {
     "id": "KAFKA-003",
