@@ -29,3 +29,4 @@
 | [0011](0011-unified-error-mapping.md) | Единый error-mapping слой вместо ручного `map[string]string` на хендлер | принято |
 | [0012](0012-slog-and-graceful-shutdown.md) | Структурные логи (slog) + graceful shutdown вместо `e.Logger.Fatal` | принято |
 | [0013](0013-golangci-lint-early.md) | golangci-lint v2 с расширенным набором линтеров — раньше, а не потом | принято |
+| [0014](0014-spec-driven-development.md) | Урезанный Spec-Driven Development: spec.md + tasks.md на фичу | принято |
