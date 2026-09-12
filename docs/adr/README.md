@@ -30,3 +30,4 @@
 | [0012](0012-slog-and-graceful-shutdown.md) | Структурные логи (slog) + graceful shutdown вместо `e.Logger.Fatal` | принято |
 | [0013](0013-golangci-lint-early.md) | golangci-lint v2 с расширенным набором линтеров — раньше, а не потом | принято |
 | [0014](0014-spec-driven-development.md) | Урезанный Spec-Driven Development: spec.md + tasks.md на фичу | принято |
+| [0015](0015-soft-delete-book.md) | Мягкое удаление книги (`archived`) вместо физического | принято |
