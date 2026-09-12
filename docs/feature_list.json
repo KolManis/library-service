@@ -112,14 +112,12 @@
     "title": "Консьюмер book.decommissioned: списание всех Copy книги + отмена активных броней",
     "priority": "low",
     "status": "planned",
+    "spec": "specs/001-kafka-consumer/spec.md",
     "acceptance": [
-      "Консьюмер декодирует protobuf-событие book.decommissioned (внешний продюсер — гипотетическая система каталога, в этом проекте не реализуется)",
-      "Списывает все Copy книги (decommissioned=true) и отменяет reserved-брони на них (переиспользует Loan.Cancel() из COPY-001)",
-      "issued-брони не трогает — читатель возвращает книгу штатно, копия просто больше не предлагается новым броням",
-      "Идемпотентность: повторная обработка того же события book.decommissioned не падает (естественная — после первого прогона reserved-броней на эти копии уже нет)"
+      "См. spec.md, раздел «Критерии приёмки» (8 пунктов) — критерии живут в спеке, не дублируются здесь (ADR-0014)"
     ],
-    "verification": "go test -tags=integration ./test/integration/...",
-    "notes": "Этап 4 из DESIGN.md, часть 3/3. Зависит от KAFKA-002 и COPY-001 (доменный примитив Loan.Cancelled переиспользуется, а не дублируется)."
+    "verification": "go test -tags=integration ./test/integration/... -run TestBookConsumerSuite",
+    "notes": "Этап 4 из DESIGN.md, часть 3/3. Зависит от KAFKA-002 и COPY-001 (доменный примитив Loan.Cancelled переиспользуется, а не дублируется). Первая фича по процессу SDD (ADR-0014): спека и пошаговый план написаны до кода, см. specs/001-kafka-consumer/."
   },
   {
     "id": "OUTBOX-001",
