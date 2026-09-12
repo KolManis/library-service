@@ -19,6 +19,14 @@ func NewCopyRepository(db *gorm.DB) *CopyRepository {
 	return &CopyRepository{db: db}
 }
 
+type copyModel struct {
+	ID             uuid.UUID `gorm:"primaryKey"`
+	BookID         uuid.UUID
+	Decommissioned bool
+}
+
+func (copyModel) TableName() string { return "copies" }
+
 // FindFreeCopyID возвращает id свободного (не списанного, без активной выдачи)
 // экземпляра книги. Свободных нет — ports.ErrNoFreeCopy.
 func (r *CopyRepository) FindFreeCopyID(ctx context.Context, bookID uuid.UUID) (uuid.UUID, error) {
@@ -41,4 +49,20 @@ func (r *CopyRepository) FindFreeCopyID(ctx context.Context, bookID uuid.UUID) (
 		return uuid.Nil, fmt.Errorf("%w: bookID=%s", ports.ErrNoFreeCopy, bookID)
 	}
 	return row.ID, nil
+}
+
+// DecommissionByID помечает копию как списанную по её ID.
+// Копия не найдена — ports.ErrCopyNotFound.
+func (r *CopyRepository) DecommissionByID(ctx context.Context, copyID uuid.UUID) error {
+	res := dbFromContext(ctx, r.db).
+		Model(&copyModel{}).
+		Where("id = ?", copyID).
+		Update("decommissioned", true)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return fmt.Errorf("%w: %s", ports.ErrCopyNotFound, copyID)
+	}
+	return nil
 }

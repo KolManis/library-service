@@ -102,9 +102,8 @@ func (r *LoanRepository) FindByReaderID(ctx context.Context, readerID uuid.UUID)
 		return nil, err
 	}
 
-	views := make([]ports.LoanView, 0, len(models))
-	for _, m := range models {
-		views = append(views, ports.LoanView{
+	return mapSlice(models, func(m loanModel) ports.LoanView {
+		return ports.LoanView{
 			LoanID:     m.ID,
 			CopyID:     m.CopyID,
 			Status:     m.Status,
@@ -112,7 +111,22 @@ func (r *LoanRepository) FindByReaderID(ctx context.Context, readerID uuid.UUID)
 			IssuedAt:   m.IssuedAt,
 			DueAt:      m.DueAt,
 			ReturnedAt: m.ReturnedAt,
-		})
+		}
+	}), nil
+}
+
+// FindReservedByCopyID возвращает активную бронь (status = reserved) для
+// указанной копии. Такой брони нет — (nil, nil), это не ошибка.
+func (r *LoanRepository) FindReservedByCopyID(ctx context.Context, copyID uuid.UUID) (*loan.Loan, error) {
+	var m loanModel
+	err := dbFromContext(ctx, r.db).
+		Where("copy_id = ? AND status = ?", copyID, loan.StatusReserved).
+		First(&m).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
 	}
-	return views, nil
+	return toLoanDomain(m), nil
 }

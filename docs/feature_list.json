@@ -93,17 +93,63 @@
     "notes": "Этап 4 из DESIGN.md, часть 2/3 закрыта. buf+protoc-gen-go (pkg/events/v1), IEventPublisher+KafkaPublisher (sarama), IOutboxReader+cmd/outbox (поллинг, JSON->proto), internal/infra и internal/config (устранили дублирование между cmd/api и cmd/outbox). Подтверждено реальным прогоном с testcontainers-go/modules/kafka: TestOutboxWorkerSuite — событие реально дошло до топика с верным ключом и protobuf-содержимым. По пути найден и обойдён регресс testcontainers-go v0.44.0 на Windows (rootless Docker false positive) — зафиксированы обе зависимости на v0.43.0."
   },
   {
+    "id": "COPY-001",
+    "title": "Списать конкретный экземпляр — POST /copies/{id}/decommission",
+    "priority": "medium",
+    "status": "done",
+    "acceptance": [
+      "Новый терминальный статус Loan.Cancelled (переход разрешён только из reserved, не из issued)",
+      "decommissioned=true проставляется на конкретную Copy по id",
+      "Если на копию сейчас reserved-бронь — она отменяется (Loan.Cancelled) в той же транзакции",
+      "Если копия сейчас issued — ничего не отменяем, только флаг; возврат идёт штатным Return, Return не проверяет decommissioned",
+      "copyID не найден -> 404"
+    ],
+    "verification": "go test ./internal/core/application/commands/decommissioncopy/... && go test -tags=integration ./test/integration/... -run \"TestCopyRepositorySuite|TestLoanRepositorySuite\"",
+    "notes": "Внутренняя синхронная команда (не Kafka) — библиотекарь сам решает списать конкретный экземпляр (потерян/повреждён). Вводит Loan.Cancelled и Loan.Cancel() — общий доменный примитив, переиспользуемый KAFKA-003. HTTP-слой (DecommissionHandler, errorMapping) без отдельного интеграционного теста — как и у reserve/issue/return, HTTP-уровень в этом проекте не тестируется отдельно (ADR-0007), покрыт unit-тестами Handler.Handle + errorMapping визуально идентичен 4 существующим строкам. Репозиторный слой (DecommissionByID/FindReservedByCopyID) проверен на реальном Postgres в этой же сессии (5/5 тестов зелёные, полный сьют 27.8с) до того, как Docker был временно недоступен для финального прогона — код репозиториев после этого не менялся."
+  },
+  {
     "id": "KAFKA-003",
-    "title": "Консьюмер book.decommissioned: списание Copy + отмена активных броней",
+    "title": "Консьюмер book.decommissioned: списание всех Copy книги + отмена активных броней",
     "priority": "low",
     "status": "planned",
     "acceptance": [
-      "Новый терминальный статус Loan.Cancelled (только из reserved, не из issued)",
-      "Консьюмер списывает все Copy книги (decommissioned=true) и отменяет reserved-брони на них",
-      "Идемпотентность: повторная обработка того же события book.decommissioned не падает"
+      "Консьюмер декодирует protobuf-событие book.decommissioned (внешний продюсер — гипотетическая система каталога, в этом проекте не реализуется)",
+      "Списывает все Copy книги (decommissioned=true) и отменяет reserved-брони на них (переиспользует Loan.Cancel() из COPY-001)",
+      "issued-брони не трогает — читатель возвращает книгу штатно, копия просто больше не предлагается новым броням",
+      "Идемпотентность: повторная обработка того же события book.decommissioned не падает (естественная — после первого прогона reserved-броней на эти копии уже нет)"
     ],
     "verification": "go test -tags=integration ./test/integration/...",
-    "notes": "Этап 4 из DESIGN.md, часть 3/3. Зависит от KAFKA-002. Новый статус — решение для DESIGN.md, не только код."
+    "notes": "Этап 4 из DESIGN.md, часть 3/3. Зависит от KAFKA-002 и COPY-001 (доменный примитив Loan.Cancelled переиспользуется, а не дублируется)."
+  },
+  {
+    "id": "OUTBOX-001",
+    "title": "Предел попыток и терминальный failed-статус в outbox — перестать вечно ретраить отравленную запись",
+    "priority": "medium",
+    "status": "planned",
+    "acceptance": [
+      "Миграция: attempts int NOT NULL DEFAULT 0, failed_at timestamptz, last_error text, available_at timestamptz NOT NULL DEFAULT now()",
+      "FetchUnpublished не отдаёт записи с failed_at IS NOT NULL и с available_at в будущем; партиальный индекс обновлён под новое условие",
+      "При сбое публикации: attempts+1, last_error записан, available_at сдвинут на экспоненциальный backoff с джиттером",
+      "После maxAttempts попыток запись помечается failed_at и навсегда выпадает из цикла — не ретраится и не спамит логи",
+      "Тест: отравленная запись (битый payload / неизвестный event_type) перестаёт ретраиться после maxAttempts и получает failed_at",
+      "Тест: транзиентный сбой (Publish упал один раз) — на следующей попытке запись публикуется, failed_at не проставлен"
+    ],
+    "verification": "go test -tags=integration ./test/integration/... -run TestOutboxWorkerSuite",
+    "notes": "Сейчас Tick при сбое просто делает continue — запись остаётся published_at IS NULL и повторяется каждые 5с вечно, даже если никогда не сможет быть обработана. Разделяет два класса сбоев: транзиентные (Publish — брокер лежит, повтор осмыслен) и перманентные (json.Unmarshal/proto.Marshal/неизвестный event_type — никогда не заработает). Kafka DLQ здесь НЕ подходит: запись не доехала до топика, dead-letter'ить нечего — DLQ это консьюмерская концепция, актуальна для KAFKA-003. Для продюсерской стороны эквивалент DLQ — поле failed_at в таблице. Референс-реализация: ADR-0006 проекта backend-trainee-assignment-autumn-2026-kolmanis (available_at для backoff + предел попыток + failed_at как dead letter, видимый в БД). Растущее число failed_at IS NOT NULL — кандидат в Prometheus-метрику (INFRA-BACKLOG)."
+  },
+  {
+    "id": "OUTBOX-002",
+    "title": "Явный ключ партиционирования в outbox вместо извлечения из JSON в воркере",
+    "priority": "medium",
+    "status": "planned",
+    "acceptance": [
+      "events.DomainEvent расширен методом AggregateID() string; LoanChanged и FineCreated его реализуют",
+      "Колонка partition_key в outbox, OutboxRepository.Append пишет ev.AggregateID() напрямую, без JSON-раскопок",
+      "ports.OutboxRecord несёт поле Key, FetchUnpublished его возвращает",
+      "publishRecord использует rec.Key и больше не парсит payload ради извлечения ключа"
+    ],
+    "verification": "go test -tags=integration ./test/integration/... -run TestOutboxWorkerSuite",
+    "notes": "Сейчас ключ Kafka-сообщения вычисляется поздно и хрупко: outbox_worker.go делает switch по event_type + json.Unmarshal + ручной выбор поля (LoanID/FineID) под каждый тип. Новый тип события без дописанного case уйдёт с пустым ключом — это тихо ломает гарантию порядка событий одного агрегата в партиции, и компилятор такую ошибку не поймает. Правильное место для ключа — момент Append, где есть строго типизированный DomainEvent. Делать вместе с OUTBOX-001: общая миграция ALTER TABLE outbox и общая правка Tick/FetchUnpublished/publishRecord — двумя заходами это те же файлы переписывать дважды."
   },
   {
     "id": "INFRA-EARLY-001",
@@ -154,7 +200,7 @@
       "Soak-сценарий не показывает деградации/утечек на продолжительной нагрузке"
     ],
     "verification": "k6 run <script>.js",
-    "notes": "Не про продукт — SDET-практика (DESIGN.md §12). Делать после RACE-001, иначе spike просто законно найдёт ещё не пофикшенный овербукинг."
+    "notes": "Не про продукт — SDET-практика (DESIGN.md §12). Делать после RACE-001, иначе spike просто законно найдёт ещё не пофикшенный овербукинг. Если к этому моменту на эндпоинтах появится rate limiting (DESIGN.md §11, API-слой) — k6-сценарий должен сам ретраить 429 с экспоненциальным backoff+джиттером, а не долбить без пауз."
   },
   {
     "id": "SDET-UI-001",
@@ -166,7 +212,7 @@
       "Playwright-тесты на ключевые пользовательские сценарии через стандартные CSS-селекторы"
     ],
     "verification": "npx playwright test",
-    "notes": "Не про продукт — SDET-практика (DESIGN.md §12). Намеренно не Flutter Web: там CanvasKit-рендер прячет DOM за canvas, автоматизация нетипичная. Теперь есть и вторая причина существовать — реально показать обложки из BOOK-COVER-001. Зависит от BOOK-COVER-001 (иначе нечего отображать)."
+    "notes": "Не про продукт — SDET-практика (DESIGN.md §12). Намеренно не Flutter Web: там CanvasKit-рендер прячет DOM за canvas, автоматизация нетипичная. Теперь есть и вторая причина существовать — реально показать обложки из BOOK-COVER-001. Зависит от BOOK-COVER-001 (иначе нечего отображать). Клиентский fetch-слой (reserve/issue/return) должен ретраить сетевые сбои/5xx с экспоненциальным backoff+джиттером — это код клиента API, а не сервера (сервер сам по себе backoff не делает, см. DESIGN.md §11)."
   },
   {
     "id": "BOOK-COVER-001",

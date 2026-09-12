@@ -23,4 +23,7 @@ type ILoanRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*loan.Loan, error)
 	// Update сохраняет изменённое состояние выдачи.
 	Update(ctx context.Context, l *loan.Loan) error
+	// FindReservedByCopyID возвращает активную бронь (status = reserved)
+	// для указанной копии. Если такой брони нет — возвращает (nil, nil).
+	FindReservedByCopyID(ctx context.Context, copyID uuid.UUID) (*loan.Loan, error)
 }

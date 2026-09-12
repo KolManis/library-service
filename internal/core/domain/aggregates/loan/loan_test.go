@@ -153,6 +153,36 @@ func TestLoan_Transitions(t *testing.T) {
 			action:  func(l *Loan) error { return l.MarkOverdue(now) },
 			wantErr: ErrInvalidTransition,
 		},
+		{
+			name:    "cancel из reserved — успех",
+			from:    StatusReserved,
+			action:  func(l *Loan) error { return l.Cancel(now) },
+			wantErr: nil,
+		},
+		{
+			name:    "cancel из issued — запрещено",
+			from:    StatusIssued,
+			action:  func(l *Loan) error { return l.Cancel(now) },
+			wantErr: ErrInvalidTransition,
+		},
+		{
+			name:    "cancel из returned — запрещено",
+			from:    StatusReturned,
+			action:  func(l *Loan) error { return l.Cancel(now) },
+			wantErr: ErrInvalidTransition,
+		},
+		{
+			name:    "cancel из expired — запрещено",
+			from:    StatusExpired,
+			action:  func(l *Loan) error { return l.Cancel(now) },
+			wantErr: ErrInvalidTransition,
+		},
+		{
+			name:    "cancel из overdue — запрещено",
+			from:    StatusOverdue,
+			action:  func(l *Loan) error { return l.Cancel(now) },
+			wantErr: ErrInvalidTransition,
+		},
 	}
 
 	for _, tt := range tests {

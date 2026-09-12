@@ -14,6 +14,7 @@ import (
 	"github.com/KolManis/library-service/internal/adapters/in/httphandlers"
 	"github.com/KolManis/library-service/internal/adapters/out/repositories"
 	"github.com/KolManis/library-service/internal/config"
+	"github.com/KolManis/library-service/internal/core/application/commands/decommissioncopy"
 	"github.com/KolManis/library-service/internal/core/application/commands/issueloan"
 	"github.com/KolManis/library-service/internal/core/application/commands/reservecopy"
 	"github.com/KolManis/library-service/internal/core/application/commands/returnloan"
@@ -65,17 +66,20 @@ func main() {
 	issueHandler := issueloan.NewHandler(loanRepo, outboxRepo, transactor, time.Now)
 	returnHandler := returnloan.NewHandler(loanRepo, fineRepo, outboxRepo, transactor, time.Now)
 	readerLoansHandler := getreaderloans.NewHandler(loanRepo)
+	decommissionHandler := decommissioncopy.NewHandler(copyRepo, loanRepo, outboxRepo, transactor, time.Now)
 
 	httpReserveHandler := httphandlers.NewReserveHandler(reserveHandler)
 	httpIssueHandler := httphandlers.NewIssueHandler(issueHandler)
 	httpReturnHandler := httphandlers.NewReturnHandler(returnHandler)
 	httpReaderLoansHandler := httphandlers.NewReaderLoansHandler(readerLoansHandler)
+	httpDecommissionHandler := httphandlers.NewDecommissionHandler(decommissionHandler)
 
 	e := echo.New()
 	e.POST("/books/:id/reserve", httpReserveHandler.Reserve)
 	e.POST("/loans/:id/issue", httpIssueHandler.Issue)
 	e.POST("/loans/:id/return", httpReturnHandler.Return)
 	e.GET("/readers/:id/loans", httpReaderLoansHandler.List)
+	e.POST("/copies/:id/decommission", httpDecommissionHandler.Decommission)
 
 	ctx, stop := infra.ShutdownContext()
 	defer stop()

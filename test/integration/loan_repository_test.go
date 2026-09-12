@@ -79,6 +79,47 @@ func (s *LoanRepositorySuite) TestGetByID_NotFound() {
 	s.Require().ErrorIs(err, ports.ErrLoanNotFound)
 }
 
+// TestFindReservedByCopyID_Found — reserved-бронь на копии находится.
+func (s *LoanRepositorySuite) TestFindReservedByCopyID_Found() {
+	ctx := context.Background()
+	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
+
+	l, err := loan.Reserve(fixtureCopyID, fixtureReaderID, now)
+	s.Require().NoError(err)
+	s.Require().NoError(s.repo.Create(ctx, l))
+
+	got, err := s.repo.FindReservedByCopyID(ctx, fixtureCopyID)
+	s.Require().NoError(err)
+	s.Require().NotNil(got)
+	s.Require().Equal(l.ID(), got.ID())
+}
+
+// TestFindReservedByCopyID_NoLoan — на копии вообще нет выдач: (nil, nil),
+// это нормальное состояние, а не ошибка.
+func (s *LoanRepositorySuite) TestFindReservedByCopyID_NoLoan() {
+	got, err := s.repo.FindReservedByCopyID(context.Background(), fixtureCopyID)
+	s.Require().NoError(err)
+	s.Require().Nil(got)
+}
+
+// TestFindReservedByCopyID_IgnoresIssued — копия сейчас issued, а не reserved:
+// метод не должен её находить, иначе списание случайно отменило бы уже
+// выданную читателю книгу.
+func (s *LoanRepositorySuite) TestFindReservedByCopyID_IgnoresIssued() {
+	ctx := context.Background()
+	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
+
+	l, err := loan.Reserve(fixtureCopyID, fixtureReaderID, now)
+	s.Require().NoError(err)
+	s.Require().NoError(s.repo.Create(ctx, l))
+	s.Require().NoError(l.Issue(now))
+	s.Require().NoError(s.repo.Update(ctx, l))
+
+	got, err := s.repo.FindReservedByCopyID(ctx, fixtureCopyID)
+	s.Require().NoError(err)
+	s.Require().Nil(got)
+}
+
 // Мост в стандартный go test.
 func TestLoanRepositorySuite(t *testing.T) {
 	suite.Run(t, new(LoanRepositorySuite))

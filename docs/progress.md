@@ -270,3 +270,63 @@ Remaining:
 
 Next session: закоммитить и запушить `feature/kafka-producer`, открыть PR.
 После мержа — `KAFKA-003`.
+
+## 2026-09-09
+
+Task: COPY-001 (списание одной копии) — от переосмысления scope KAFKA-003 до
+полного завершения фичи. Плюс: полный набор ADR, доработки в DESIGN.md по
+следам изучения соседнего проекта (CI/CD, lefthook, деплой).
+
+Changed:
+- Разбор вопроса "а что если списать одну копию, а не всю книгу" привёл к
+  разделению `KAFKA-003` на `COPY-001` (внутренняя синхронная команда) и
+  `KAFKA-003` (внешний Kafka-консьюмер) — оба переиспользуют один доменный
+  примитив вместо дублирования логики.
+- Домен: `loan.StatusCancelled` + `Loan.Cancel(now)` — переход разрешён
+  только из `reserved`, терминальный статус, без TTL-проверки (в отличие от
+  `Expire`). 5 табличных тестов в `TestLoan_Transitions`.
+- Порты+адаптеры: `ICopyRepository.DecommissionByID` (RowsAffected==0 ->
+  ErrCopyNotFound), `ILoanRepository.FindReservedByCopyID` (nil,nil — брони
+  нет, не ошибка). Обновлены все fakeLoanRepo в issueloan/reservecopy/
+  returnloan под выросший интерфейс. 6 интеграционных тестов на реальном
+  Postgres — все зелёные (27.8с полный сьют).
+- Application: `decommissioncopy.Handler` — транзакция DecommissionByID ->
+  FindReservedByCopyID -> (если нашлась) Cancel/Update/Append. 5 unit-тестов.
+- HTTP: `DecommissionHandler`, `POST /copies/:id/decommission`,
+  `ports.ErrCopyNotFound` в `errorMapping` -> 404, wiring в `cmd/api/main.go`.
+- Рефакторинг `mapSlice[T, U any]` (generics-тренировка) в
+  `FindByReaderID`/`FetchUnpublished` — убрал дублирование ручных
+  make+for+append циклов.
+- **`docs/adr/` — все 13 ADR написаны** (запрошено явно: пользователь
+  осознал разрыв в понимании архитектуры, т.к. решения принимались в чате и
+  терялись). Формат по образцу `backend-trainee-assignment-autumn-2026-kolmanis`:
+  Контекст/Решение/**Альтернативы**/Последствия. Покрывает всю историю
+  проекта — от гексагона и Loan-vs-Copy до golangci-lint-раньше-а-не-позже.
+- `DESIGN.md` §11 дополнен по итогам изучения CI/CD соседнего проекта:
+  lefthook (pre-commit быстрый / pre-push дорогой), needs-граф CI-джобов,
+  `verify:false` в golangci-lint-action, ручной деплой на живой таргет
+  (Fly.io) + `workflow_dispatch` — явно зафиксировано, что GitHub-раннер сам
+  не годится под port-forward (одноразовая VM), нужен именно постоянно
+  живущий внешний таргет. Плюс: exponential backoff+jitter уточнён по месту
+  (retry `Publish()` в Kafka через `sarama.BackoffFunc`, НЕ тикер
+  outbox-воркера — обсуждали и я сам дважды ошибался в формулировке, прежде
+  чем зафиксировали правильно) и rate limiting на REST-эндпоинтах отдельно
+  от клиентского backoff в будущих SDET-LOAD-001/SDET-UI-001.
+
+Verified:
+- `go build ./...`, `go vet ./...`, `go test ./...` — 0 issues, все зелёные.
+- `golangci-lint run ./...` — 0 issues.
+- `go test -tags=integration ./test/integration/... -run "TestCopyRepositorySuite|TestLoanRepositorySuite"` —
+  зелёные на реальном Postgres (ранее в сессии; финальный полный прогон не
+  сделан — Docker Desktop был недоступен в конце сессии).
+- HTTP-слой (`DecommissionHandler`) без отдельного интеграционного теста —
+  как и у reserve/issue/return, осознанно (см. ADR-0007): в проекте нет
+  httptest-инфраструктуры ни для одного эндпоинта, заводить её только под
+  этот один было бы непоследовательно.
+
+Next session: перепроверить полный `go test -tags=integration ./test/integration/...`
+(Docker должен быть поднят), затем `KAFKA-003` — консьюмер `book.decommissioned`.
+Не забыть: уникальный consumer group ID / топик на тест (обсуждали проблему
+`OffsetOldest` в `outbox_worker_test.go` — станет реальной, как только в
+сьюте появится второй тест на общем брокере). ADR-0006 для KAFKA-003 уже
+написан заранее — начать код, сверяясь с ним.
